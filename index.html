@@ -47,1766 +47,1862 @@
 
 <body class="pb-20">
 
-  <div id="root"></div>
+<div id="root"></div>
 
-  <script type="text/babel">
+<script type="text/babel">
 
-    const SUPABASE_URL = 'https://dhjrvpnbeapybgomwelc.supabase.co';
+const SUPABASE_URL = 'https://dhjrvpnbeapybgomwelc.supabase.co';
 
-    const SUPABASE_ANON_KEY =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaHJ2cG5iZWFweWJnb213ZWxjIiwicmVmIjoiZGhqcnZwbmJlYXB5YmdvbXdlbGMiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4ODIwOTU3MywiZXhwIjoyMTAzNzg1NTczfQ.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkamhydnBuYmVhcHliZ29td2VsYyIsInJlZiI6ImRoanJ2cG5iZWFweWJnb213ZWxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDk1NzMsImV4cCI6MjEwMzc4NTU3M30.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
 
-    const supabaseClient = supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY
+const TELEGRAM_BOT_TOKEN =
+  '8901201743:AAF4C_3ocML_a3h9Lya8UsXmIP4topFhFW8';
+
+const TOP_TELEGRAM_ID = '2047759475';
+
+const supabaseClient =
+  supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const tg = window.Telegram?.WebApp;
+
+
+function App() {
+
+  const [products, setProducts] = React.useState([]);
+  const [categories, setCategories] = React.useState([]);
+  const [selectedCategory, setSelectedCategory] = React.useState(null);
+
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [minPrice, setMinPrice] = React.useState('');
+  const [maxPrice, setMaxPrice] = React.useState('');
+  const [conditionFilter, setConditionFilter] = React.useState('all');
+  const [sortOption, setSortOption] = React.useState('newest');
+  const [showFilters, setShowFilters] = React.useState(false);
+
+  const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState('catalog');
+  const [favoriteIds, setFavoriteIds] = React.useState([]);
+  const [selectedProduct, setSelectedProduct] = React.useState(null);
+
+  const [editingProductId, setEditingProductId] = React.useState(null);
+  const [title, setTitle] = React.useState('');
+  const [price, setPrice] = React.useState('');
+  const [condition, setCondition] = React.useState('used');
+  const [description, setDescription] = React.useState('');
+  const [categoryId, setCategoryId] = React.useState('');
+  const [imageFiles, setImageFiles] = React.useState([]);
+  const [imagePreviews, setImagePreviews] = React.useState([]);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [currentDbUser, setCurrentDbUser] = React.useState(null);
+
+  const [sellerReviews, setSellerReviews] = React.useState([]);
+  const [newRating, setNewRating] = React.useState(5);
+  const [newReviewComment, setNewReviewComment] = React.useState('');
+
+  const currentUser =
+    tg?.initDataUnsafe?.user ||
+    {
+      id: 9999999,
+      username: 'telegram_user',
+      first_name: 'Користувач'
+    };
+
+
+  React.useEffect(() => {
+    tg?.ready();
+    tg?.expand();
+    initUserAndData();
+  }, []);
+
+
+  async function initUserAndData() {
+
+    fetchCategories();
+
+    let { data: dbUser } =
+      await supabaseClient
+        .from('users')
+        .select('*')
+        .eq('telegram_id', currentUser.id)
+        .maybeSingle();
+
+    if (!dbUser) {
+
+      const { data: newUser } =
+        await supabaseClient
+          .from('users')
+          .insert([{
+            telegram_id: currentUser.id,
+            username:
+              currentUser.username ||
+              `user_${currentUser.id}`
+          }])
+          .select()
+          .single();
+
+      dbUser = newUser;
+    }
+
+    setCurrentDbUser(dbUser);
+
+    if (dbUser) {
+      fetchFavorites(dbUser.id);
+    }
+
+    fetchProducts();
+  }
+
+
+  async function fetchCategories() {
+
+    const { data } =
+      await supabaseClient
+        .from('categories')
+        .select('*')
+        .order('id', { ascending: true });
+
+    if (data) {
+      setCategories(data);
+    }
+  }
+
+
+  async function fetchProducts() {
+
+    setLoading(true);
+
+    let { data, error } =
+      await supabaseClient
+        .from('products')
+        .select(
+          '*, categories(title), users!inner(id, telegram_id, username), product_images(image_url)'
+        )
+        .order('created_at', { ascending: false });
+
+    if (!error && data) {
+
+      /*
+       * ==========================================
+       * ТОП-ОГОЛОШЕННЯ
+       * ==========================================
+       *
+       * Продавець Telegram ID:
+       * 2047759475
+       *
+       * Його оголошення показуються першими.
+       *
+       * Якщо у нього декілька оголошень,
+       * вони також будуть зверху.
+       */
+
+      data.sort((a, b) => {
+
+        const aIsTop =
+          String(a.users?.telegram_id) === TOP_TELEGRAM_ID;
+
+        const bIsTop =
+          String(b.users?.telegram_id) === TOP_TELEGRAM_ID;
+
+        if (aIsTop && !bIsTop) {
+          return -1;
+        }
+
+        if (!aIsTop && bIsTop) {
+          return 1;
+        }
+
+        return (
+          new Date(b.created_at) -
+          new Date(a.created_at)
+        );
+      });
+
+      setProducts(data);
+    }
+
+    setLoading(false);
+  }
+
+
+  async function fetchFavorites(userId) {
+
+    const { data } =
+      await supabaseClient
+        .from('favorites')
+        .select('product_id')
+        .eq('user_id', userId);
+
+    if (data) {
+
+      setFavoriteIds(
+        data.map(f => f.product_id)
+      );
+
+    }
+  }
+
+
+  async function openProductDetails(prod) {
+
+    setSelectedProduct(prod);
+
+    const newViews =
+      (prod.views_count || 0) + 1;
+
+    await supabaseClient
+      .from('products')
+      .update({
+        views_count: newViews
+      })
+      .eq('id', prod.id);
+
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === prod.id
+          ? {
+              ...p,
+              views_count: newViews
+            }
+          : p
+      )
     );
 
-    const tg = window.Telegram?.WebApp;
+    if (prod.users?.id) {
 
-
-    function App() {
-
-      const [products, setProducts] = React.useState([]);
-      const [categories, setCategories] = React.useState([]);
-      const [selectedCategory, setSelectedCategory] = React.useState(null);
-
-      // Фільтри
-      const [searchQuery, setSearchQuery] = React.useState('');
-      const [minPrice, setMinPrice] = React.useState('');
-      const [maxPrice, setMaxPrice] = React.useState('');
-      const [conditionFilter, setConditionFilter] = React.useState('all');
-      const [sortOption, setSortOption] = React.useState('newest');
-      const [showFilters, setShowFilters] = React.useState(false);
-
-      const [loading, setLoading] = React.useState(true);
-      const [tab, setTab] = React.useState('catalog');
-      const [favoriteIds, setFavoriteIds] = React.useState([]);
-      const [selectedProduct, setSelectedProduct] = React.useState(null);
-
-      // Форма створення / редагування
-      const [editingProductId, setEditingProductId] = React.useState(null);
-      const [title, setTitle] = React.useState('');
-      const [price, setPrice] = React.useState('');
-      const [condition, setCondition] = React.useState('used');
-      const [description, setDescription] = React.useState('');
-      const [categoryId, setCategoryId] = React.useState('');
-      const [imageFiles, setImageFiles] = React.useState([]);
-      const [imagePreviews, setImagePreviews] = React.useState([]);
-      const [isSubmitting, setIsSubmitting] = React.useState(false);
-      const [currentDbUser, setCurrentDbUser] = React.useState(null);
-
-      // Відгуки
-      const [sellerReviews, setSellerReviews] = React.useState([]);
-      const [newRating, setNewRating] = React.useState(5);
-      const [newReviewComment, setNewReviewComment] = React.useState('');
-
-      // Стан оплати бусту
-      const [boostingProductId, setBoostingProductId] = React.useState(null);
-
-
-      const currentUser =
-        tg?.initDataUnsafe?.user || {
-          id: 9999999,
-          username: 'telegram_user',
-          first_name: 'Користувач'
-        };
-
-
-      React.useEffect(() => {
-        tg?.ready();
-        tg?.expand();
-
-        initUserAndData();
-      }, []);
-
-
-      async function initUserAndData() {
-
-        fetchCategories();
-
-        let { data: dbUser } = await supabaseClient
-          .from('users')
+      const { data: revs } =
+        await supabaseClient
+          .from('reviews')
           .select('*')
-          .eq('telegram_id', currentUser.id)
-          .maybeSingle();
+          .eq('seller_id', prod.users.id)
+          .order('created_at', {
+            ascending: false
+          });
 
-        if (!dbUser) {
+      if (revs) {
+        setSellerReviews(revs);
+      }
+    }
+  }
 
-          const { data: newUser } = await supabaseClient
-            .from('users')
+
+  async function toggleFavorite(prod, e) {
+
+    if (e) {
+      e.stopPropagation();
+    }
+
+    if (!currentDbUser) {
+      return;
+    }
+
+    const isFav =
+      favoriteIds.includes(prod.id);
+
+    if (isFav) {
+
+      setFavoriteIds(
+        favoriteIds.filter(
+          id => id !== prod.id
+        )
+      );
+
+      await supabaseClient
+        .from('favorites')
+        .delete()
+        .eq('user_id', currentDbUser.id)
+        .eq('product_id', prod.id);
+
+    } else {
+
+      setFavoriteIds([
+        ...favoriteIds,
+        prod.id
+      ]);
+
+      await supabaseClient
+        .from('favorites')
+        .insert([{
+          user_id: currentDbUser.id,
+          product_id: prod.id
+        }]);
+
+      sendTelegramNotification(
+        prod.users?.telegram_id,
+        `❤️ *Ваш товар додали в обране!*
+
+📦 *${prod.title}*
+💰 Ціна: ${prod.price_uah} ₴
+👤 Хто додав: ${currentUser.first_name} (@${currentUser.username || 'без_юзернейму'})`
+      );
+    }
+  }
+
+
+  async function sendTelegramNotification(chatId, text) {
+
+    if (!TELEGRAM_BOT_TOKEN || !chatId) {
+      return;
+    }
+
+    try {
+
+      await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'Markdown'
+          })
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        'Помилка сповіщення:',
+        err
+      );
+
+    }
+  }
+
+
+  function handleFilesAdd(e) {
+
+    const selected =
+      Array.from(e.target.files);
+
+    if (
+      imageFiles.length +
+      selected.length >
+      5
+    ) {
+
+      alert(
+        'Максимум 5 фотографій!'
+      );
+
+      return;
+    }
+
+    const newFiles =
+      [...imageFiles, ...selected];
+
+    setImageFiles(newFiles);
+
+    setImagePreviews(
+      newFiles.map(file =>
+        URL.createObjectURL(file)
+      )
+    );
+  }
+
+
+  function removeImage(index) {
+
+    const newFiles =
+      imageFiles.filter(
+        (_, i) => i !== index
+      );
+
+    setImageFiles(newFiles);
+
+    setImagePreviews(
+      newFiles.map(file =>
+        URL.createObjectURL(file)
+      )
+    );
+  }
+
+
+  function startEditing(prod) {
+
+    setEditingProductId(prod.id);
+    setTitle(prod.title);
+    setPrice(prod.price_uah);
+    setCondition(
+      prod.condition || 'used'
+    );
+    setDescription(
+      prod.description || ''
+    );
+    setCategoryId(
+      prod.category_id || ''
+    );
+
+    setImageFiles([]);
+
+    setImagePreviews(
+      prod.image_url
+        ? [prod.image_url]
+        : []
+    );
+
+    setTab('add');
+  }
+
+
+  function resetForm() {
+
+    setEditingProductId(null);
+    setTitle('');
+    setPrice('');
+    setCondition('used');
+    setDescription('');
+    setCategoryId('');
+    setImageFiles([]);
+    setImagePreviews([]);
+  }
+
+
+  async function handleSaveProduct(e) {
+
+    e.preventDefault();
+
+    if (!title || !price) {
+
+      return alert(
+        'Будь ласка, вкажіть назву та ціну!'
+      );
+    }
+
+    setIsSubmitting(true);
+
+    try {
+
+      let uploadedUrls = [];
+
+      for (let file of imageFiles) {
+
+        const fileExt =
+          file.name.split('.').pop();
+
+        const fileName =
+          `${Date.now()}_${Math.random()
+            .toString(36)
+            .substring(7)}.${fileExt}`;
+
+        const {
+          error: uploadErr
+        } =
+          await supabaseClient
+            .storage
+            .from('product-images')
+            .upload(
+              fileName,
+              file
+            );
+
+        if (!uploadErr) {
+
+          const {
+            data: publicUrlData
+          } =
+            supabaseClient
+              .storage
+              .from('product-images')
+              .getPublicUrl(fileName);
+
+          uploadedUrls.push(
+            publicUrlData.publicUrl
+          );
+        }
+      }
+
+      const mainImage =
+        uploadedUrls.length > 0
+          ? uploadedUrls[0]
+          : (imagePreviews[0] || null);
+
+
+      if (editingProductId) {
+
+        const {
+          error: updateErr
+        } =
+          await supabaseClient
+            .from('products')
+            .update({
+              title,
+              price_uah:
+                parseFloat(price),
+              condition,
+              description,
+              category_id:
+                categoryId
+                  ? parseInt(categoryId)
+                  : null,
+              image_url: mainImage
+            })
+            .eq(
+              'id',
+              editingProductId
+            );
+
+        if (updateErr) {
+          throw updateErr;
+        }
+
+        alert(
+          '✏️ Оголошення успішно оновлено!'
+        );
+
+      } else {
+
+        const {
+          data: newProduct,
+          error: prodErr
+        } =
+          await supabaseClient
+            .from('products')
             .insert([{
-              telegram_id: currentUser.id,
-              username:
-                currentUser.username ||
-                `user_${currentUser.id}`
+              user_id:
+                currentDbUser.id,
+              title,
+              price_uah:
+                parseFloat(price),
+              condition,
+              description,
+              category_id:
+                categoryId
+                  ? parseInt(categoryId)
+                  : null,
+              image_url:
+                mainImage
             }])
             .select()
             .single();
 
-          dbUser = newUser;
+        if (prodErr) {
+          throw prodErr;
         }
-
-        setCurrentDbUser(dbUser);
-
-        if (dbUser) {
-          fetchFavorites(dbUser.id);
-        }
-
-        fetchProducts();
-      }
-
-
-      async function fetchCategories() {
-
-        const { data } = await supabaseClient
-          .from('categories')
-          .select('*')
-          .order('id', { ascending: true });
-
-        if (data) {
-          setCategories(data);
-        }
-      }
-
-
-      async function fetchProducts() {
-
-        setLoading(true);
-
-        const { data, error } = await supabaseClient
-          .from('products')
-          .select(
-            '*, categories(title), users!inner(id, telegram_id, username), product_images(image_url)'
-          )
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          setProducts(data);
-        }
-
-        setLoading(false);
-      }
-
-
-      async function fetchFavorites(userId) {
-
-        const { data } = await supabaseClient
-          .from('favorites')
-          .select('product_id')
-          .eq('user_id', userId);
-
-        if (data) {
-          setFavoriteIds(
-            data.map(f => f.product_id)
-          );
-        }
-      }
-
-
-      async function openProductDetails(prod) {
-
-        setSelectedProduct(prod);
-
-        const newViews =
-          (prod.views_count || 0) + 1;
-
-        await supabaseClient
-          .from('products')
-          .update({
-            views_count: newViews
-          })
-          .eq('id', prod.id);
-
-        setProducts(prev =>
-          prev.map(p =>
-            p.id === prod.id
-              ? { ...p, views_count: newViews }
-              : p
-          )
-        );
-
-
-        if (prod.users?.id) {
-
-          const { data: revs } = await supabaseClient
-            .from('reviews')
-            .select('*')
-            .eq('seller_id', prod.users.id)
-            .order('created_at', {
-              ascending: false
-            });
-
-          if (revs) {
-            setSellerReviews(revs);
-          }
-        }
-      }
-
-
-      async function toggleFavorite(prod, e) {
-
-        if (e) {
-          e.stopPropagation();
-        }
-
-        if (!currentDbUser) {
-          return;
-        }
-
-        const isFav =
-          favoriteIds.includes(prod.id);
-
-
-        if (isFav) {
-
-          setFavoriteIds(
-            favoriteIds.filter(
-              id => id !== prod.id
-            )
-          );
-
-          await supabaseClient
-            .from('favorites')
-            .delete()
-            .eq('user_id', currentDbUser.id)
-            .eq('product_id', prod.id);
-
-        } else {
-
-          setFavoriteIds([
-            ...favoriteIds,
-            prod.id
-          ]);
-
-          await supabaseClient
-            .from('favorites')
-            .insert([{
-              user_id: currentDbUser.id,
-              product_id: prod.id
-            }]);
-
-          sendTelegramNotification(
-            prod.users?.telegram_id,
-            `❤️ *Ваш товар додали в обране!*\n\n📦 *${prod.title}*\n💰 Ціна: ${prod.price_uah} ₴\n👤 Хто додав: ${currentUser.first_name} (@${currentUser.username || 'без_юзернейму'})`
-          );
-        }
-      }
-
-
-      /*
-       * УВАГА:
-       * Токен Telegram Bot НЕ зберігаємо в index.html.
-       *
-       * Якщо тобі потрібні Telegram-сповіщення,
-       * їх потрібно відправляти через Supabase Edge Function,
-       * де токен зберігається у Secrets.
-       *
-       * Ця функція залишена безпечною, щоб не викладати токен бота
-       * у відкритий frontend-код.
-       */
-      async function sendTelegramNotification(chatId, text) {
-
-        if (!chatId) {
-          return;
-        }
-
-        console.log(
-          'Telegram notification:',
-          chatId,
-          text
-        );
-
-        /*
-         * Тут можна буде викликати окрему Edge Function,
-         * наприклад:
-         *
-         * await supabaseClient.functions.invoke(
-         *   'send-telegram-notification',
-         *   {
-         *     body: {
-         *       chatId,
-         *       text
-         *     }
-         *   }
-         * );
-         */
-      }
-
-
-      function handleFilesAdd(e) {
-
-        const selected =
-          Array.from(e.target.files);
 
         if (
-          imageFiles.length +
-          selected.length > 5
+          uploadedUrls.length > 0 &&
+          newProduct
         ) {
-          alert(
-            'Максимум 5 фотографій!'
-          );
 
-          return;
-        }
-
-        const newFiles = [
-          ...imageFiles,
-          ...selected
-        ];
-
-        setImageFiles(newFiles);
-
-        setImagePreviews(
-          newFiles.map(file =>
-            URL.createObjectURL(file)
-          )
-        );
-      }
-
-
-      function removeImage(index) {
-
-        const newFiles =
-          imageFiles.filter(
-            (_, i) => i !== index
-          );
-
-        setImageFiles(newFiles);
-
-        setImagePreviews(
-          newFiles.map(file =>
-            URL.createObjectURL(file)
-          )
-        );
-      }
-
-
-      function startEditing(prod) {
-
-        setEditingProductId(prod.id);
-        setTitle(prod.title);
-        setPrice(prod.price_uah);
-        setCondition(
-          prod.condition || 'used'
-        );
-        setDescription(
-          prod.description || ''
-        );
-        setCategoryId(
-          prod.category_id || ''
-        );
-
-        setImageFiles([]);
-
-        setImagePreviews(
-          prod.image_url
-            ? [prod.image_url]
-            : []
-        );
-
-        setTab('add');
-      }
-
-
-      function resetForm() {
-
-        setEditingProductId(null);
-        setTitle('');
-        setPrice('');
-        setCondition('used');
-        setDescription('');
-        setCategoryId('');
-        setImageFiles([]);
-        setImagePreviews([]);
-      }
-
-
-      async function handleSaveProduct(e) {
-
-        e.preventDefault();
-
-        if (!title || !price) {
-          return alert(
-            'Будь ласка, вкажіть назву та ціну!'
-          );
-        }
-
-        setIsSubmitting(true);
-
-        try {
-
-          let uploadedUrls = [];
-
-          for (let file of imageFiles) {
-
-            const fileExt =
-              file.name
-                .split('.')
-                .pop();
-
-            const fileName =
-              `${Date.now()}_${Math.random()
-                .toString(36)
-                .substring(7)}.${fileExt}`;
-
-
-            const {
-              error: uploadErr
-            } = await supabaseClient
-              .storage
-              .from('product-images')
-              .upload(
-                fileName,
-                file
-              );
-
-
-            if (!uploadErr) {
-
-              const {
-                data: publicUrlData
-              } =
-                supabaseClient
-                  .storage
-                  .from('product-images')
-                  .getPublicUrl(
-                    fileName
-                  );
-
-              uploadedUrls.push(
-                publicUrlData.publicUrl
-              );
-            }
-          }
-
-
-          const mainImage =
-            uploadedUrls.length > 0
-              ? uploadedUrls[0]
-              : (
-                  imagePreviews[0] ||
-                  null
-                );
-
-
-          if (editingProductId) {
-
-            const {
-              error: updateErr
-            } = await supabaseClient
-              .from('products')
-              .update({
-                title,
-                price_uah:
-                  parseFloat(price),
-                condition,
-                description,
-                category_id:
-                  categoryId
-                    ? parseInt(categoryId)
-                    : null,
+          const galleryData =
+            uploadedUrls.map(
+              url => ({
+                product_id:
+                  newProduct.id,
                 image_url:
-                  mainImage
+                  url
               })
-              .eq(
-                'id',
-                editingProductId
-              );
-
-
-            if (updateErr) {
-              throw updateErr;
-            }
-
-            alert(
-              '✏️ Оголошення успішно оновлено!'
             );
 
-          } else {
-
-            const {
-              data: newProduct,
-              error: prodErr
-            } =
-              await supabaseClient
-                .from('products')
-                .insert([{
-                  user_id:
-                    currentDbUser.id,
-                  title,
-                  price_uah:
-                    parseFloat(price),
-                  condition,
-                  description,
-                  category_id:
-                    categoryId
-                      ? parseInt(categoryId)
-                      : null,
-                  image_url:
-                    mainImage
-                }])
-                .select()
-                .single();
-
-
-            if (prodErr) {
-              throw prodErr;
-            }
-
-
-            if (
-              uploadedUrls.length > 0 &&
-              newProduct
-            ) {
-
-              const galleryData =
-                uploadedUrls.map(
-                  url => ({
-                    product_id:
-                      newProduct.id,
-                    image_url:
-                      url
-                  })
-                );
-
-              await supabaseClient
-                .from('product_images')
-                .insert(
-                  galleryData
-                );
-            }
-
-
-            sendTelegramNotification(
-              currentUser.id,
-              `🎉 *Ваше оголошення успішно опубліковане!*\n\n📦 *${title}*\n💰 Ціна: ${price} ₴`
+          await supabaseClient
+            .from('product_images')
+            .insert(
+              galleryData
             );
-
-
-            alert(
-              '🎉 Оголошення опубліковано!'
-            );
-          }
-
-
-          resetForm();
-          setTab('catalog');
-          fetchProducts();
-
-        } catch (err) {
-
-          alert(
-            'Помилка збереження: ' +
-            err.message
-          );
-
-        } finally {
-
-          setIsSubmitting(false);
         }
+
+        sendTelegramNotification(
+          currentUser.id,
+          `🎉 *Ваше оголошення успішно опубліковане!*
+
+📦 *${title}*
+💰 Ціна: ${price} ₴`
+        );
+
+        alert(
+          '🎉 Оголошення опубліковано!'
+        );
       }
 
+      resetForm();
 
-      async function toggleSoldStatus(prod) {
+      setTab('catalog');
 
-        const newStatus =
-          !prod.is_sold;
+      fetchProducts();
 
-        const {
-          error
-        } = await supabaseClient
-          .from('products')
-          .update({
-            is_sold: newStatus
-          })
-          .eq(
-            'id',
-            prod.id
-          );
+    } catch (err) {
 
+      alert(
+        'Помилка збереження: ' +
+        err.message
+      );
 
-        if (!error) {
+    } finally {
 
-          setProducts(prev =>
-            prev.map(p =>
-              p.id === prod.id
-                ? {
-                    ...p,
-                    is_sold:
-                      newStatus
-                  }
-                : p
-            )
-          );
-        }
-      }
+      setIsSubmitting(false);
+    }
+  }
 
 
-      async function handleDeleteProduct(id) {
+  async function toggleSoldStatus(prod) {
 
-        if (
-          !confirm(
-            'Ви дійсно хочете видалити це оголошення?'
-          )
-        ) {
-          return;
-        }
+    const newStatus =
+      !prod.is_sold;
 
-
-        const {
-          error
-        } = await supabaseClient
-          .from('products')
-          .delete()
-          .eq('id', id);
-
-
-        if (!error) {
-
-          alert(
-            'Оголошення видалено!'
-          );
-
-          fetchProducts();
-
-        } else {
-
-          alert(
-            'Помилка видалення: ' +
-            error.message
-          );
-        }
-      }
-
-
-      /*
-       * =====================================================
-       * ОПЛАТА БУСТУ ЗА 50 TELEGRAM STARS
-       * =====================================================
-       *
-       * Edge Function:
-       *
-       * create-telegram-invoice
-       *
-       * повинна повернути:
-       *
-       * {
-       *   invoiceLink: "https://t.me/..."
-       * }
-       *
-       * Після успішної оплати:
-       * статус === "paid"
-       *
-       * Саме Edge Function повинна перевіряти оплату
-       * та змінювати дані оголошення на сервері.
-       */
-      async function boostProduct(prod) {
-
-        if (!prod?.id) {
-          alert(
-            'Не вдалося визначити оголошення.'
-          );
-          return;
-        }
-
-
-        if (prod.is_sold) {
-          alert(
-            'Продане оголошення не можна підняти в топ.'
-          );
-          return;
-        }
-
-
-        setBoostingProductId(
+    const {
+      error
+    } =
+      await supabaseClient
+        .from('products')
+        .update({
+          is_sold: newStatus
+        })
+        .eq(
+          'id',
           prod.id
         );
 
+    if (!error) {
 
-        try {
-
-          const {
-            data,
-            error
-          } =
-            await supabaseClient.functions.invoke(
-              'create-telegram-invoice',
-              {
-                body: {
-                  productId: prod.id,
-                  stars: 50,
-                  title:
-                    'Підняти оголошення в топ',
-                  description:
-                    'Закріплення товару на перших позиціях на 3 дні'
-                }
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === prod.id
+            ? {
+                ...p,
+                is_sold:
+                  newStatus
               }
-            );
+            : p
+        )
+      );
+    }
+  }
 
 
-          if (
-            error ||
-            !data?.invoiceLink
-          ) {
+  async function handleDeleteProduct(id) {
 
-            console.error(
-              'Invoice error:',
-              error
-            );
+    if (
+      !confirm(
+        'Ви дійсно хочете видалити це оголошення?'
+      )
+    ) {
+      return;
+    }
 
-            alert(
-              'Помилка створення рахунку: ' +
-              (
-                error?.message ||
-                'Невідома помилка'
-              )
-            );
+    const {
+      error
+    } =
+      await supabaseClient
+        .from('products')
+        .delete()
+        .eq('id', id);
 
-            return;
-          }
+    if (!error) {
 
+      alert(
+        'Оголошення видалено!'
+      );
 
-          /*
-           * Telegram Mini App
-           */
-          if (
-            window.Telegram?.WebApp
-          ) {
+      fetchProducts();
 
-            window.Telegram.WebApp.openInvoice(
-              data.invoiceLink,
-              async (status) => {
+    } else {
 
-                console.log(
-                  'Telegram invoice status:',
-                  status
-                );
+      alert(
+        'Помилка видалення: ' +
+        error.message
+      );
+    }
+  }
 
 
-                if (
-                  status === 'paid'
-                ) {
+  async function handleAddReview(e) {
 
-                  alert(
-                    'Оплата успішна! Ваше оголошення піднято в топ 🚀'
-                  );
+    e.preventDefault();
 
-                  /*
-                   * Повторно завантажуємо товари,
-                   * щоб отримати оновлені дані
-                   * з Supabase.
-                   */
-                  await fetchProducts();
+    if (
+      !selectedProduct?.users?.id ||
+      !currentDbUser
+    ) {
+      return;
+    }
 
-                } else if (
-                  status === 'cancelled'
-                ) {
+    const {
+      error
+    } =
+      await supabaseClient
+        .from('reviews')
+        .insert([{
+          seller_id:
+            selectedProduct.users.id,
+          reviewer_id:
+            currentDbUser.id,
+          rating:
+            parseInt(newRating),
+          comment:
+            newReviewComment
+        }]);
 
-                  console.log(
-                    'Користувач скасував оплату.'
-                  );
+    if (!error) {
 
-                } else {
+      alert(
+        'Дякуємо за ваш відгук!'
+      );
 
-                  console.log(
-                    'Оплату закрито або не завершено:',
-                    status
-                  );
-                }
-              }
-            );
+      setNewReviewComment('');
 
-          } else {
-
-            /*
-             * Якщо відкрито не всередині Telegram,
-             * відкриваємо invoice у новій вкладці.
-             */
-            window.open(
-              data.invoiceLink,
-              '_blank'
-            );
-          }
-
-        } catch (err) {
-
-          console.error(
-            'Boost error:',
-            err
+      const {
+        data: revs
+      } =
+        await supabaseClient
+          .from('reviews')
+          .select('*')
+          .eq(
+            'seller_id',
+            selectedProduct.users.id
+          )
+          .order(
+            'created_at',
+            {
+              ascending: false
+            }
           );
 
-          alert(
-            'Сталася помилка при спробі оплати.'
-          );
-
-        } finally {
-
-          setBoostingProductId(null);
-        }
+      if (revs) {
+        setSellerReviews(revs);
       }
 
+    } else {
 
-      async function handleAddReview(e) {
+      alert(
+        'Помилка додавання відгуку: ' +
+        error.message
+      );
+    }
+  }
 
-        e.preventDefault();
+
+  function openSellerChat(username) {
+
+    if (!username) {
+
+      return alert(
+        'У продавця немає юзернейму Telegram!'
+      );
+    }
+
+    tg?.openTelegramLink(
+      `https://t.me/${username}`
+    );
+  }
+
+
+  function shareProduct(prod) {
+
+    const text =
+      `Подивіться товар: ${prod.title} за ${prod.price_uah} ₴ в OLX Mini App!`;
+
+    tg?.openTelegramLink(
+      `https://t.me/share/url?url=${encodeURIComponent(
+        window.location.href
+      )}&text=${encodeURIComponent(text)}`
+    );
+  }
+
+
+  const filteredProducts =
+    products
+      .filter(prod => {
+
+        const matchesCategory =
+          selectedCategory
+            ? prod.category_id ===
+              selectedCategory
+            : true;
+
+        const matchesSearch =
+          prod.title
+            .toLowerCase()
+            .includes(
+              searchQuery.toLowerCase()
+            );
+
+        const matchesMinPrice =
+          minPrice
+            ? prod.price_uah >=
+              parseFloat(minPrice)
+            : true;
+
+        const matchesMaxPrice =
+          maxPrice
+            ? prod.price_uah <=
+              parseFloat(maxPrice)
+            : true;
+
+        const matchesCondition =
+          conditionFilter === 'all'
+            ? true
+            : prod.condition ===
+              conditionFilter;
+
+        return (
+          matchesCategory &&
+          matchesSearch &&
+          matchesMinPrice &&
+          matchesMaxPrice &&
+          matchesCondition
+        );
+
+      })
+      .sort((a, b) => {
+
+        /*
+         * ТОП завжди має пріоритет
+         * навіть якщо користувач
+         * вибрав сортування за ціною.
+         */
+
+        const aIsTop =
+          String(a.users?.telegram_id) ===
+          TOP_TELEGRAM_ID;
+
+        const bIsTop =
+          String(b.users?.telegram_id) ===
+          TOP_TELEGRAM_ID;
+
+        if (aIsTop && !bIsTop) {
+          return -1;
+        }
+
+        if (!aIsTop && bIsTop) {
+          return 1;
+        }
 
         if (
-          !selectedProduct?.users?.id ||
-          !currentDbUser
+          sortOption ===
+          'price_asc'
         ) {
-          return;
-        }
-
-
-        const {
-          error
-        } = await supabaseClient
-          .from('reviews')
-          .insert([{
-            seller_id:
-              selectedProduct.users.id,
-            reviewer_id:
-              currentDbUser.id,
-            rating:
-              parseInt(newRating),
-            comment:
-              newReviewComment
-          }]);
-
-
-        if (!error) {
-
-          alert(
-            'Дякуємо за ваш відгук!'
-          );
-
-          setNewReviewComment('');
-
-
-          const {
-            data: revs
-          } = await supabaseClient
-            .from('reviews')
-            .select('*')
-            .eq(
-              'seller_id',
-              selectedProduct.users.id
-            )
-            .order(
-              'created_at',
-              {
-                ascending: false
-              }
-            );
-
-
-          if (revs) {
-            setSellerReviews(revs);
-          }
-
-        } else {
-
-          alert(
-            'Помилка додавання відгуку: ' +
-            error.message
-          );
-        }
-      }
-
-
-      function openSellerChat(username) {
-
-        if (!username) {
-
-          return alert(
-            'У продавця немає юзернейму Telegram!'
+          return (
+            a.price_uah -
+            b.price_uah
           );
         }
 
-        tg?.openTelegramLink(
-          `https://t.me/${username}`
+        if (
+          sortOption ===
+          'price_desc'
+        ) {
+          return (
+            b.price_uah -
+            a.price_uah
+          );
+        }
+
+        return (
+          new Date(b.created_at) -
+          new Date(a.created_at)
         );
-      }
+      });
 
 
-      function shareProduct(prod) {
-
-        const text =
-          `Подивіться товар: ${prod.title} за ${prod.price_uah} ₴ в OLX Mini App!`;
-
-
-        tg?.openTelegramLink(
-          `https://t.me/share/url?url=${encodeURIComponent(
-            window.location.href
-          )}&text=${encodeURIComponent(
-            text
-          )}`
-        );
-      }
+  const favoriteProducts =
+    products.filter(p =>
+      favoriteIds.includes(p.id)
+    );
 
 
-      // Фільтрація
-      const filteredProducts =
-        products
-          .filter(prod => {
-
-            const matchesCategory =
-              selectedCategory
-                ? prod.category_id ===
-                  selectedCategory
-                : true;
+  const myProducts =
+    products.filter(
+      p =>
+        String(
+          p.users?.telegram_id
+        ) ===
+        String(currentUser.id)
+    );
 
 
-            const matchesSearch =
-              prod.title
-                .toLowerCase()
-                .includes(
-                  searchQuery
-                    .toLowerCase()
-                );
+  const avgRating =
+    sellerReviews.length > 0
+      ? (
+          sellerReviews.reduce(
+            (acc, curr) =>
+              acc + curr.rating,
+            0
+          ) /
+          sellerReviews.length
+        ).toFixed(1)
+      : null;
 
 
-            const matchesMinPrice =
-              minPrice
-                ? prod.price_uah >=
-                  parseFloat(minPrice)
-                : true;
+  return (
+
+    <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-[#002f34] text-white">
+
+      <div>
+
+        <header class="p-4 bg-[#002f34] flex justify-between items-center sticky top-0 z-10 border-b border-[#104b50]">
+
+          <div class="flex items-center space-x-2">
+
+            <span class="text-2xl font-black text-[#23e5bf]">
+              OLX
+            </span>
+
+            <span class="text-xs bg-[#104b50] text-[#23e5bf] font-bold px-2 py-0.5 rounded">
+              UA
+            </span>
+
+          </div>
+
+          <span class="text-xs bg-[#104b50] text-gray-200 font-medium px-2.5 py-1 rounded-full border border-[#1b646a]">
+            👤 {currentUser.first_name}
+          </span>
+
+        </header>
 
 
-            const matchesMaxPrice =
-              maxPrice
-                ? prod.price_uah <=
-                  parseFloat(maxPrice)
-                : true;
+        {tab === 'catalog' && (
 
+          <main class="p-4">
 
-            const matchesCondition =
-              conditionFilter === 'all'
-                ? true
-                : prod.condition ===
-                  conditionFilter;
+            <div class="space-y-2 mb-3">
 
+              <div class="flex gap-2">
 
-            return (
-              matchesCategory &&
-              matchesSearch &&
-              matchesMinPrice &&
-              matchesMaxPrice &&
-              matchesCondition
-            );
-          })
-          .sort((a, b) => {
+                <input
+                  type="text"
+                  placeholder="🔍 Пошук оголошень..."
+                  value={searchQuery}
+                  onChange={
+                    e =>
+                      setSearchQuery(
+                        e.target.value
+                      )
+                  }
+                  class="flex-1 border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
+                />
 
-            if (
-              sortOption ===
-              'price_asc'
-            ) {
-              return (
-                a.price_uah -
-                b.price_uah
-              );
-            }
-
-
-            if (
-              sortOption ===
-              'price_desc'
-            ) {
-              return (
-                b.price_uah -
-                a.price_uah
-              );
-            }
-
-
-            return (
-              new Date(b.created_at) -
-              new Date(a.created_at)
-            );
-          });
-
-
-      const favoriteProducts =
-        products.filter(p =>
-          favoriteIds.includes(p.id)
-        );
-
-
-      const myProducts =
-        products.filter(p =>
-          p.users?.telegram_id ===
-          currentUser.id
-        );
-
-
-      const avgRating =
-        sellerReviews.length > 0
-          ? (
-              sellerReviews.reduce(
-                (acc, curr) =>
-                  acc + curr.rating,
-                0
-              ) /
-              sellerReviews.length
-            ).toFixed(1)
-          : null;
-
-
-      return (
-
-        <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-[#002f34] text-white">
-
-          <div>
-
-            {/* HEADER */}
-            <header class="p-4 bg-[#002f34] flex justify-between items-center sticky top-0 z-10 border-b border-[#104b50]">
-
-              <div class="flex items-center space-x-2">
-
-                <span class="text-2xl font-black text-[#23e5bf]">
-                  OLX
-                </span>
-
-                <span class="text-xs bg-[#104b50] text-[#23e5bf] font-bold px-2 py-0.5 rounded">
-                  UA
-                </span>
+                <button
+                  onClick={() =>
+                    setShowFilters(
+                      !showFilters
+                    )
+                  }
+                  class={`px-3 py-2.5 rounded-xl border text-xs font-bold transition ${
+                    showFilters ||
+                    minPrice ||
+                    maxPrice ||
+                    conditionFilter !== 'all'
+                      ? 'bg-[#23e5bf] text-[#002f34] border-[#23e5bf]'
+                      : 'bg-[#00474e] text-white border-[#104b50]'
+                  }`}
+                >
+                  ⚙️ Фільтри
+                </button>
 
               </div>
 
 
-              <span class="text-xs bg-[#104b50] text-gray-200 font-medium px-2.5 py-1 rounded-full border border-[#1b646a]">
-                👤 {currentUser.first_name}
-              </span>
+              {showFilters && (
 
-            </header>
+                <div class="bg-[#00383e] p-3 rounded-xl border border-[#104b50] space-y-3">
 
+                  <div>
 
-            {/* CATALOG */}
-            {tab === 'catalog' && (
+                    <label class="block text-[11px] font-bold text-gray-300 mb-1">
+                      Ціна (грн):
+                    </label>
 
-              <main class="p-4">
-
-                {/* Search & Filters */}
-                <div class="space-y-2 mb-3">
-
-                  <div class="flex gap-2">
-
-                    <input
-                      type="text"
-                      placeholder="🔍 Пошук оголошень..."
-                      value={searchQuery}
-                      onChange={e =>
-                        setSearchQuery(
-                          e.target.value
-                        )
-                      }
-                      class="flex-1 border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
-                    />
-
-
-                    <button
-                      onClick={() =>
-                        setShowFilters(
-                          !showFilters
-                        )
-                      }
-                      class={`px-3 py-2.5 rounded-xl border text-xs font-bold transition ${
-                        showFilters ||
-                        minPrice ||
-                        maxPrice ||
-                        conditionFilter !==
-                          'all'
-                          ? 'bg-[#23e5bf] text-[#002f34] border-[#23e5bf]'
-                          : 'bg-[#00474e] text-white border-[#104b50]'
-                      }`}
-                    >
-                      ⚙️ Фільтри
-                    </button>
-
-                  </div>
-
-
-                  {showFilters && (
-
-                    <div class="bg-[#00383e] p-3 rounded-xl border border-[#104b50] space-y-3">
-
-                      <div>
-
-                        <label class="block text-[11px] font-bold text-gray-300 mb-1">
-                          Ціна (грн):
-                        </label>
-
-                        <div class="flex gap-2">
-
-                          <input
-                            type="number"
-                            placeholder="Від"
-                            value={minPrice}
-                            onChange={e =>
-                              setMinPrice(
-                                e.target.value
-                              )
-                            }
-                            class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs"
-                          />
-
-                          <input
-                            type="number"
-                            placeholder="До"
-                            value={maxPrice}
-                            onChange={e =>
-                              setMaxPrice(
-                                e.target.value
-                              )
-                            }
-                            class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs"
-                          />
-
-                        </div>
-
-                      </div>
-
-
-                      <div class="flex gap-2">
-
-                        <div class="w-1/2">
-
-                          <label class="block text-[11px] font-bold text-gray-300 mb-1">
-                            Стан товару:
-                          </label>
-
-                          <select
-                            value={conditionFilter}
-                            onChange={e =>
-                              setConditionFilter(
-                                e.target.value
-                              )
-                            }
-                            class="w-full border border-gray-300 rounded-lg p-2 text-xs"
-                          >
-
-                            <option value="all">
-                              Усі стани
-                            </option>
-
-                            <option value="new">
-                              ✨ Новий
-                            </option>
-
-                            <option value="used">
-                              👌 Вживаний
-                            </option>
-
-                          </select>
-
-                        </div>
-
-
-                        <div class="w-1/2">
-
-                          <label class="block text-[11px] font-bold text-gray-300 mb-1">
-                            Сортування:
-                          </label>
-
-                          <select
-                            value={sortOption}
-                            onChange={e =>
-                              setSortOption(
-                                e.target.value
-                              )
-                            }
-                            class="w-full border border-gray-300 rounded-lg p-2 text-xs"
-                          >
-
-                            <option value="newest">
-                              ⏱ Спочатку нові
-                            </option>
-
-                            <option value="price_asc">
-                              📉 Спочатку дешевші
-                            </option>
-
-                            <option value="price_desc">
-                              📈 Спочатку дорожчі
-                            </option>
-
-                          </select>
-
-                        </div>
-
-                      </div>
-
-                    </div>
-                  )}
-
-                </div>
-
-
-                {/* Categories */}
-                <div class="flex gap-2 overflow-x-auto pb-3 mb-3 no-scrollbar">
-
-                  <button
-                    onClick={() =>
-                      setSelectedCategory(null)
-                    }
-                    class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                      selectedCategory === null
-                        ? 'bg-[#23e5bf] text-[#002f34]'
-                        : 'bg-[#00474e] text-white border border-[#104b50]'
-                    }`}
-                  >
-                    Всі товари
-                  </button>
-
-
-                  {categories.map(cat => (
-
-                    <button
-                      key={cat.id}
-                      onClick={() =>
-                        setSelectedCategory(
-                          selectedCategory ===
-                            cat.id
-                            ? null
-                            : cat.id
-                        )
-                      }
-                      class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                        selectedCategory ===
-                        cat.id
-                          ? 'bg-[#23e5bf] text-[#002f34]'
-                          : 'bg-[#00474e] text-white border border-[#104b50]'
-                      }`}
-                    >
-                      {cat.title}
-                    </button>
-
-                  ))}
-
-                </div>
-
-
-                {/* Grid */}
-                {loading ? (
-
-                  <div class="text-center py-16 text-[#23e5bf] font-medium">
-                    Завантаження...
-                  </div>
-
-                ) : filteredProducts.length === 0 ? (
-
-                  <div class="text-center py-16 text-gray-300 bg-[#00383e] rounded-2xl border border-[#104b50] p-6">
-
-                    <p class="text-3xl mb-2">
-                      📦
-                    </p>
-
-                    <p class="font-bold text-white">
-                      Оголошень не знайдено
-                    </p>
-
-                  </div>
-
-                ) : (
-
-                  <div class="grid grid-cols-2 gap-3">
-
-                    {filteredProducts.map(prod => {
-
-                      const isFav =
-                        favoriteIds.includes(
-                          prod.id
-                        );
-
-                      return (
-
-                        <div
-                          key={prod.id}
-                          onClick={() =>
-                            openProductDetails(
-                              prod
-                            )
-                          }
-                          class={`bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer active:scale-[0.98] transition relative ${
-                            prod.is_sold
-                              ? 'opacity-60'
-                              : ''
-                          }`}
-                        >
-
-                          <button
-                            onClick={e =>
-                              toggleFavorite(
-                                prod,
-                                e
-                              )
-                            }
-                            class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow"
-                          >
-                            {isFav
-                              ? '❤️'
-                              : '🤍'}
-                          </button>
-
-
-                          {prod.is_sold && (
-
-                            <span class="absolute top-4 left-4 z-10 bg-red-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">
-                              ПРОДАНО
-                            </span>
-
-                          )}
-
-
-                          <div>
-
-                            {prod.image_url ? (
-
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-
-                                <img
-                                  src={prod.image_url}
-                                  alt={prod.title}
-                                  class="max-h-full max-w-full object-contain"
-                                />
-
-                              </div>
-
-                            ) : (
-
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
-                                🖼️
-                              </div>
-
-                            )}
-
-
-                            <div class="flex gap-1 items-center mb-1">
-
-                              <span class="text-[9px] uppercase font-black text-[#002f34] bg-[#23e5bf] px-1.5 py-0.5 rounded">
-                                {prod.categories?.title ||
-                                  'Товар'}
-                              </span>
-
-                              <span class="text-[9px] text-gray-500 font-bold">
-                                {prod.condition ===
-                                'new'
-                                  ? '✨ Новий'
-                                  : 'Вживаний'}
-                              </span>
-
-                            </div>
-
-
-                            <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">
-                              {prod.title}
-                            </h3>
-
-                          </div>
-
-
-                          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
-
-                            <span class="text-sm font-black text-[#002f34]">
-                              {prod.price_uah} ₴
-                            </span>
-
-                            <span class="text-[10px] text-gray-400 flex items-center gap-0.5">
-                              👁️ {prod.views_count || 0}
-                            </span>
-
-                          </div>
-
-                        </div>
-
-                      );
-
-                    })}
-
-                  </div>
-
-                )}
-
-              </main>
-            )}
-
-
-            {/* ADD / EDIT */}
-            {tab === 'add' && (
-
-              <main class="p-4">
-
-                <div class="bg-[#00383e] p-5 rounded-2xl border border-[#104b50] shadow-lg">
-
-                  <div class="flex justify-between items-center mb-4">
-
-                    <h2 class="text-lg font-black text-white flex items-center gap-2">
-
-                      <span class="text-[#23e5bf]">
-                        {editingProductId
-                          ? '✏️'
-                          : '➕'}
-                      </span>
-
-                      {editingProductId
-                        ? 'Редагувати оголошення'
-                        : 'Нове оголошення'}
-
-                    </h2>
-
-
-                    {editingProductId && (
-
-                      <button
-                        onClick={resetForm}
-                        class="text-xs text-red-400 font-bold underline"
-                      >
-                        Скасувати
-                      </button>
-
-                    )}
-
-                  </div>
-
-
-                  <form
-                    onSubmit={
-                      handleSaveProduct
-                    }
-                    class="space-y-4"
-                  >
-
-                    <div>
-
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Назва товару *
-                      </label>
-
-                      <input
-                        type="text"
-                        required
-                        placeholder="напр. Парфум Chanel Chance"
-                        value={title}
-                        onChange={e =>
-                          setTitle(
-                            e.target.value
-                          )
-                        }
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
-                      />
-
-                    </div>
-
-
-                    <div>
-
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Ціна (₴) *
-                      </label>
+                    <div class="flex gap-2">
 
                       <input
                         type="number"
-                        required
-                        step="0.01"
-                        placeholder="0.00"
-                        value={price}
-                        onChange={e =>
-                          setPrice(
-                            e.target.value
-                          )
+                        placeholder="Від"
+                        value={minPrice}
+                        onChange={
+                          e =>
+                            setMinPrice(
+                              e.target.value
+                            )
                         }
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                        class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs"
+                      />
+
+                      <input
+                        type="number"
+                        placeholder="До"
+                        value={maxPrice}
+                        onChange={
+                          e =>
+                            setMaxPrice(
+                              e.target.value
+                            )
+                        }
+                        class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs"
                       />
 
                     </div>
 
+                  </div>
 
-                    <div>
 
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Стан товару
+                  <div class="flex gap-2">
+
+                    <div class="w-1/2">
+
+                      <label class="block text-[11px] font-bold text-gray-300 mb-1">
+                        Стан товару:
                       </label>
 
                       <select
-                        value={condition}
-                        onChange={e =>
-                          setCondition(
-                            e.target.value
-                          )
+                        value={conditionFilter}
+                        onChange={
+                          e =>
+                            setConditionFilter(
+                              e.target.value
+                            )
                         }
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                        class="w-full border border-gray-300 rounded-lg p-2 text-xs"
                       >
 
-                        <option value="used">
-                          👌 Вживаний
+                        <option value="all">
+                          Усі стани
                         </option>
 
                         <option value="new">
                           ✨ Новий
                         </option>
 
+                        <option value="used">
+                          👌 Вживаний
+                        </option>
+
                       </select>
 
                     </div>
 
 
-                    <div>
+                    <div class="w-1/2">
 
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Фото товару (
-                        {imageFiles.length +
-                          (editingProductId
-                            ? 1
-                            : 0)}
-                        /5)
+                      <label class="block text-[11px] font-bold text-gray-300 mb-1">
+                        Сортування:
                       </label>
 
+                      <select
+                        value={sortOption}
+                        onChange={
+                          e =>
+                            setSortOption(
+                              e.target.value
+                            )
+                        }
+                        class="w-full border border-gray-300 rounded-lg p-2 text-xs"
+                      >
 
-                      <div class="flex gap-2 overflow-x-auto py-1 no-scrollbar items-center">
+                        <option value="newest">
+                          ⏱ Спочатку нові
+                        </option>
 
-                        {imagePreviews.map(
-                          (src, i) => (
+                        <option value="price_asc">
+                          📉 Спочатку дешевші
+                        </option>
 
-                            <div
-                              key={i}
-                              class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center"
-                            >
+                        <option value="price_desc">
+                          📈 Спочатку дорожчі
+                        </option>
 
-                              <img
-                                src={src}
-                                class="max-h-full max-w-full object-contain"
-                              />
+                      </select>
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeImage(i)
-                                }
-                                class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center"
-                              >
-                                ✕
-                              </button>
+                    </div>
 
-                            </div>
+                  </div>
 
+                </div>
+
+              )}
+
+            </div>
+
+
+            <div class="flex gap-2 overflow-x-auto pb-3 mb-3 no-scrollbar">
+
+              <button
+                onClick={() =>
+                  setSelectedCategory(null)
+                }
+                class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedCategory === null
+                    ? 'bg-[#23e5bf] text-[#002f34]'
+                    : 'bg-[#00474e] text-white border border-[#104b50]'
+                }`}
+              >
+                Всі товари
+              </button>
+
+
+              {categories.map(cat => (
+
+                <button
+                  key={cat.id}
+                  onClick={() =>
+                    setSelectedCategory(
+                      selectedCategory ===
+                      cat.id
+                        ? null
+                        : cat.id
+                    )
+                  }
+                  class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedCategory ===
+                    cat.id
+                      ? 'bg-[#23e5bf] text-[#002f34]'
+                      : 'bg-[#00474e] text-white border border-[#104b50]'
+                  }`}
+                >
+                  {cat.title}
+                </button>
+
+              ))}
+
+            </div>
+
+
+            {loading ? (
+
+              <div class="text-center py-16 text-[#23e5bf] font-medium">
+                Завантаження...
+              </div>
+
+            ) : filteredProducts.length === 0 ? (
+
+              <div class="text-center py-16 text-gray-300 bg-[#00383e] rounded-2xl border border-[#104b50] p-6">
+
+                <p class="text-3xl mb-2">
+                  📦
+                </p>
+
+                <p class="font-bold text-white">
+                  Оголошень не знайдено
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div class="grid grid-cols-2 gap-3">
+
+                {filteredProducts.map(prod => {
+
+                  const isFav =
+                    favoriteIds.includes(
+                      prod.id
+                    );
+
+                  const isTop =
+                    String(
+                      prod.users?.telegram_id
+                    ) ===
+                    TOP_TELEGRAM_ID;
+
+
+                  return (
+
+                    <div
+                      key={prod.id}
+                      onClick={() =>
+                        openProductDetails(
+                          prod
+                        )
+                      }
+                      class={`bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer active:scale-[0.98] transition relative ${
+                        prod.is_sold
+                          ? 'opacity-60'
+                          : ''
+                      } ${
+                        isTop
+                          ? 'ring-2 ring-amber-400'
+                          : ''
+                      }`}
+                    >
+
+                      {isTop && (
+
+                        <span class="absolute top-2 left-2 z-10 bg-amber-400 text-[#002f34] text-[9px] font-black uppercase px-2 py-1 rounded-md shadow-md">
+                          ⭐ ТОП
+                        </span>
+
+                      )}
+
+
+                      <button
+                        onClick={e =>
+                          toggleFavorite(
+                            prod,
+                            e
                           )
-                        )}
+                        }
+                        class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow"
+                      >
+                        {isFav
+                          ? '❤️'
+                          : '🤍'}
+                      </button>
 
 
-                        {imageFiles.length <
-                          5 && (
+                      {prod.is_sold && (
 
-                          <label class="flex-shrink-0 w-20 h-28 border-2 border-dashed border-[#23e5bf] rounded-xl flex flex-col items-center justify-center cursor-pointer bg-[#00474e]">
+                        <span class="absolute top-4 left-4 z-10 bg-red-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">
+                          ПРОДАНО
+                        </span>
 
-                            <span class="text-2xl text-[#23e5bf]">
-                              +
-                            </span>
+                      )}
 
-                            <span class="text-[10px] font-bold text-gray-200 mt-1">
-                              Додати
-                            </span>
 
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={
-                                handleFilesAdd
-                              }
-                              class="hidden"
+                      <div>
+
+                        {prod.image_url ? (
+
+                          <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+
+                            <img
+                              src={prod.image_url}
+                              alt={prod.title}
+                              class="max-h-full max-w-full object-contain"
                             />
 
-                          </label>
+                          </div>
+
+                        ) : (
+
+                          <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
+                            🖼️
+                          </div>
 
                         )}
+
+
+                        <div class="flex gap-1 items-center mb-1">
+
+                          <span class="text-[9px] uppercase font-black text-[#002f34] bg-[#23e5bf] px-1.5 py-0.5 rounded">
+                            {prod.categories?.title ||
+                              'Товар'}
+                          </span>
+
+                          <span class="text-[9px] text-gray-500 font-bold">
+                            {prod.condition ===
+                            'new'
+                              ? '✨ Новий'
+                              : 'Вживаний'}
+                          </span>
+
+                        </div>
+
+
+                        <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">
+                          {prod.title}
+                        </h3>
+
+                      </div>
+
+
+                      <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
+
+                        <span class="text-sm font-black text-[#002f34]">
+                          {prod.price_uah} ₴
+                        </span>
+
+                        <span class="text-[10px] text-gray-400 flex items-center gap-0.5">
+                          👁️ {prod.views_count || 0}
+                        </span>
 
                       </div>
 
                     </div>
 
+                  );
 
-                    <div>
+                })}
 
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Категорія
-                      </label>
+              </div>
 
-                      <select
-                        value={categoryId}
-                        onChange={e =>
-                          setCategoryId(
-                            e.target.value
-                          )
-                        }
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
-                      >
-
-                        <option value="">
-                          Оберіть категорію
-                        </option>
-
-                        {categories.map(
-                          cat => (
-
-                            <option
-                              key={cat.id}
-                              value={cat.id}
-                            >
-                              {cat.title}
-                            </option>
-
-                          )
-                        )}
-
-                      </select>
-
-                    </div>
-
-
-                    <div>
-
-                      <label class="block text-xs font-bold text-gray-200 mb-1">
-                        Опис
-                      </label>
-
-                      <textarea
-                        rows="3"
-                        placeholder="Детальний опис товару..."
-                        value={description}
-                        onChange={e =>
-                          setDescription(
-                            e.target.value
-                          )
-                        }
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
-                      ></textarea>
-
-                    </div>
-
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      class="w-full bg-[#23e5bf] text-[#002f34] font-black py-3 rounded-xl shadow-md hover:bg-[#1fd6b2] active:scale-[0.99] transition disabled:opacity-50"
-                    >
-                      {isSubmitting
-                        ? 'Збереження...'
-                        : (
-                            editingProductId
-                              ? 'Зберегти зміни'
-                              : 'Опублікувати оголошення'
-                          )}
-                    </button>
-
-                  </form>
-
-                </div>
-
-              </main>
             )}
 
+          </main>
 
-            {/* FAVORITES */}
-            {tab === 'favorites' && (
+        )}
 
-              <main class="p-4">
 
-                <h2 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+        {tab === 'add' && (
 
-                  <span>❤️</span>
+          <main class="p-4">
 
-                  Збережені оголошення (
-                  {favoriteProducts.length}
-                  )
+            <div class="bg-[#00383e] p-5 rounded-2xl border border-[#104b50] shadow-lg">
+
+              <div class="flex justify-between items-center mb-4">
+
+                <h2 class="text-lg font-black text-white flex items-center gap-2">
+
+                  <span class="text-[#23e5bf]">
+                    {editingProductId
+                      ? '✏️'
+                      : '➕'}
+                  </span>
+
+                  {editingProductId
+                    ? 'Редагувати оголошення'
+                    : 'Нове оголошення'}
 
                 </h2>
 
 
-                {favoriteProducts.length === 0 ? (
+                {editingProductId && (
 
-                  <div class="text-center py-12 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
+                  <button
+                    onClick={resetForm}
+                    class="text-xs text-red-400 font-bold underline"
+                  >
+                    Скасувати
+                  </button>
 
-                    <p class="text-2xl mb-2">
-                      🤍
-                    </p>
+                )}
 
-                    <p class="text-sm font-bold text-white">
-                      Список обраного порожній
-                    </p>
+              </div>
+
+
+              <form
+                onSubmit={
+                  handleSaveProduct
+                }
+                class="space-y-4"
+              >
+
+                <div>
+
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Назва товару *
+                  </label>
+
+                  <input
+                    type="text"
+                    required
+                    placeholder="напр. Парфум Chanel Chance"
+                    value={title}
+                    onChange={
+                      e =>
+                        setTitle(
+                          e.target.value
+                        )
+                    }
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                  />
+
+                </div>
+
+
+                <div>
+
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Ціна (₴) *
+                  </label>
+
+                  <input
+                    type="number"
+                    required
+                    step="0.01"
+                    placeholder="0.00"
+                    value={price}
+                    onChange={
+                      e =>
+                        setPrice(
+                          e.target.value
+                        )
+                    }
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                  />
+
+                </div>
+
+
+                <div>
+
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Стан товару
+                  </label>
+
+                  <select
+                    value={condition}
+                    onChange={
+                      e =>
+                        setCondition(
+                          e.target.value
+                        )
+                    }
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                  >
+
+                    <option value="used">
+                      👌 Вживаний
+                    </option>
+
+                    <option value="new">
+                      ✨ Новий
+                    </option>
+
+                  </select>
+
+                </div>
+
+
+                <div>
+
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Фото товару ({imageFiles.length + (editingProductId ? 1 : 0)}/5)
+                  </label>
+
+                  <div class="flex gap-2 overflow-x-auto py-1 no-scrollbar items-center">
+
+                    {imagePreviews.map(
+                      (src, i) => (
+
+                        <div
+                          key={i}
+                          class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center"
+                        >
+
+                          <img
+                            src={src}
+                            class="max-h-full max-w-full object-contain"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeImage(i)
+                            }
+                            class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center"
+                          >
+                            ✕
+                          </button>
+
+                        </div>
+
+                      )
+                    )}
+
+
+                    {imageFiles.length < 5 && (
+
+                      <label class="flex-shrink-0 w-20 h-28 border-2 border-dashed border-[#23e5bf] rounded-xl flex flex-col items-center justify-center cursor-pointer bg-[#00474e]">
+
+                        <span class="text-2xl text-[#23e5bf]">
+                          +
+                        </span>
+
+                        <span class="text-[10px] font-bold text-gray-200 mt-1">
+                          Додати
+                        </span>
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={
+                            handleFilesAdd
+                          }
+                          class="hidden"
+                        />
+
+                      </label>
+
+                    )}
 
                   </div>
 
-                ) : (
+                </div>
 
-                  <div class="grid grid-cols-2 gap-3">
 
-                    {favoriteProducts.map(
-                      prod => (
+                <div>
 
-                        <div
-                          key={prod.id}
-                          onClick={() =>
-                            openProductDetails(
-                              prod
-                            )
-                          }
-                          class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer relative"
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Категорія
+                  </label>
+
+                  <select
+                    value={categoryId}
+                    onChange={
+                      e =>
+                        setCategoryId(
+                          e.target.value
+                        )
+                    }
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                  >
+
+                    <option value="">
+                      Оберіть категорію
+                    </option>
+
+                    {categories.map(
+                      cat => (
+
+                        <option
+                          key={cat.id}
+                          value={cat.id}
                         >
+                          {cat.title}
+                        </option>
+
+                      )
+                    )}
+
+                  </select>
+
+                </div>
+
+
+                <div>
+
+                  <label class="block text-xs font-bold text-gray-200 mb-1">
+                    Опис
+                  </label>
+
+                  <textarea
+                    rows="3"
+                    placeholder="Детальний опис товару..."
+                    value={description}
+                    onChange={
+                      e =>
+                        setDescription(
+                          e.target.value
+                        )
+                    }
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"
+                  ></textarea>
+
+                </div>
+
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  class="w-full bg-[#23e5bf] text-[#002f34] font-black py-3 rounded-xl shadow-md hover:bg-[#1fd6b2] active:scale-[0.99] transition disabled:opacity-50"
+                >
+                  {isSubmitting
+                    ? 'Збереження...'
+                    : editingProductId
+                      ? 'Зберегти зміни'
+                      : 'Опублікувати оголошення'}
+                </button>
+
+              </form>
+
+            </div>
+
+          </main>
+
+        )}
+
+
+        {tab === 'favorites' && (
+
+          <main class="p-4">
+
+            <h2 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+              <span>❤️</span>
+              Збережені оголошення ({favoriteProducts.length})
+            </h2>
+
+
+            {favoriteProducts.length === 0 ? (
+
+              <div class="text-center py-12 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
+
+                <p class="text-2xl mb-2">
+                  🤍
+                </p>
+
+                <p class="text-sm font-bold text-white">
+                  Список обраного порожній
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div class="grid grid-cols-2 gap-3">
+
+                {favoriteProducts.map(
+                  prod => (
+
+                    <div
+                      key={prod.id}
+                      onClick={() =>
+                        openProductDetails(
+                          prod
+                        )
+                      }
+                      class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer relative"
+                    >
+
+                      <button
+                        onClick={e =>
+                          toggleFavorite(
+                            prod,
+                            e
+                          )
+                        }
+                        class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow"
+                      >
+                        ❤️
+                      </button>
+
+
+                      <div>
+
+                        {prod.image_url ? (
+
+                          <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+
+                            <img
+                              src={prod.image_url}
+                              alt={prod.title}
+                              class="max-h-full max-w-full object-contain"
+                            />
+
+                          </div>
+
+                        ) : (
+
+                          <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
+                            🖼️
+                          </div>
+
+                        )}
+
+
+                        <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">
+                          {prod.title}
+                        </h3>
+
+                      </div>
+
+
+                      <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
+
+                        <span class="text-sm font-black text-[#002f34]">
+                          {prod.price_uah} ₴
+                        </span>
+
+                        <span class="text-xs text-blue-600 font-bold">
+                          ➔
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                  )
+                )}
+
+              </div>
+
+            )}
+
+          </main>
+
+        )}
+
+
+        {tab === 'profile' && (
+
+          <main class="p-4">
+
+            <div class="bg-[#00383e] p-4 rounded-2xl border border-[#104b50] mb-4">
+
+              <h2 class="text-base font-bold text-white flex items-center gap-2">
+
+                <span>👤</span>
+                Особистий кабінет
+
+              </h2>
+
+              <p class="text-xs text-gray-300 mt-1">
+
+                Усього ваших оголошень:
+                <b>{myProducts.length}</b>
+
+              </p>
+
+            </div>
+
+
+            <h3 class="text-xs uppercase font-bold text-gray-400 mb-2">
+              Ваші публікації:
+            </h3>
+
+
+            {myProducts.length === 0 ? (
+
+              <div class="text-center py-8 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
+
+                <p class="text-sm">
+                  Ви ще не опублікували жодного товару
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div class="space-y-3">
+
+                {myProducts.map(
+                  prod => (
+
+                    <div
+                      key={prod.id}
+                      class="bg-white p-3 rounded-xl text-[#002f34] flex flex-col gap-2 shadow-sm"
+                    >
+
+                      <div class="flex gap-3 items-center justify-between">
+
+                        <div class="flex gap-3 items-center overflow-hidden">
+
+                          {prod.image_url ? (
+
+                            <img
+                              src={prod.image_url}
+                              alt={prod.title}
+                              class="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                            />
+
+                          ) : (
+
+                            <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
+                              🖼️
+                            </div>
+
+                          )}
+
+
+                          <div class="truncate">
+
+                            <h4 class="font-bold text-xs truncate">
+                              {prod.title}
+                            </h4>
+
+                            <p class="text-xs font-black text-[#002f34] mt-0.5">
+                              {prod.price_uah} ₴
+                            </p>
+
+                          </div>
+
+                        </div>
+
+
+                        <div class="flex gap-1">
 
                           <button
-                            onClick={e =>
-                              toggleFavorite(
-                                prod,
-                                e
+                            onClick={() =>
+                              startEditing(
+                                prod
                               )
                             }
-                            class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow"
+                            class="bg-blue-50 text-blue-600 p-2 rounded-lg text-xs font-bold"
+                            title="Редагувати"
                           >
-                            ❤️
+                            ✏️
                           </button>
 
 
-                          <div>
+                          <button
+                            onClick={() =>
+                              handleDeleteProduct(
+                                prod.id
+                              )
+                            }
+                            class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-bold"
+                            title="Видалити"
+                          >
+                            🗑️
+                          </button>
 
-                            {prod.image_url ? (
+                        </div>
 
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-
-                                <img
-                                  src={prod.image_url}
-                                  alt={prod.title}
-                                  class="max-h-full max-w-full object-contain"
-                                />
-
-                              </div>
-
-                            ) : (
-
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
-                                🖼️
-                              </div>
-
-                            )}
+                      </div>
 
 
-                            <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">
-                              {prod.title}
-                            </h3>
+                      <div class="flex justify-between items-center pt-2 border-t border-gray-100 text-[11px]">
 
-                          </div>
+                        <span class="text-gray-500 font-bold">
+                          Переглядів: 👁️ {prod.views_count || 0}
+                        </span>
 
 
-                          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
+                        <button
+                          onClick={() =>
+                            toggleSoldStatus(
+                              prod
+                            )
+                          }
+                          class={`px-2.5 py-1 rounded-full font-bold transition ${
+                            prod.is_sold
+                              ? 'bg-gray-200 text-gray-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {prod.is_sold
+                            ? 'Позначити "В продажу"'
+                            : 'Позначити "Продано"'}
+                        </button>
 
-                            <span class="text-sm font-black text-[#002f34]">
-                              {prod.price_uah} ₴
-                            </span>
+                      </div>
 
-                            <span class="text-xs text-blue-600 font-bold">
-                              ➔
-                            </span>
+                    </div>
 
-                          </div>
+                  )
+                )}
+
+              </div>
+
+            )}
+
+          </main>
+
+        )}
+
+      </div>
+
+
+      {selectedProduct && (
+
+        <div class="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+
+          <div class="bg-white text-[#002f34] w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 relative">
+
+            <button
+              onClick={() =>
+                setSelectedProduct(null)
+              }
+              class="absolute top-4 right-4 bg-gray-200 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center z-10"
+            >
+              ✕
+            </button>
+
+
+            <div class="w-full mb-4">
+
+              {selectedProduct.product_images &&
+              selectedProduct.product_images.length > 0 ? (
+
+                <div>
+
+                  <div class="flex gap-2 overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-2xl bg-gray-900 h-80">
+
+                    {selectedProduct.product_images.map(
+                      (img, idx) => (
+
+                        <div
+                          key={idx}
+                          class="snap-center flex-shrink-0 w-full h-full flex items-center justify-center bg-gray-900"
+                        >
+
+                          <img
+                            src={img.image_url}
+                            class="max-h-full max-w-full object-contain"
+                          />
 
                         </div>
 
@@ -1815,692 +1911,388 @@
 
                   </div>
 
-                )}
 
-              </main>
-            )}
-
-
-            {/* PROFILE */}
-            {tab === 'profile' && (
-
-              <main class="p-4">
-
-                <div class="bg-[#00383e] p-4 rounded-2xl border border-[#104b50] mb-4">
-
-                  <h2 class="text-base font-bold text-white flex items-center gap-2">
-
-                    <span>👤</span>
-
-                    Особистий кабінет
-
-                  </h2>
-
-
-                  <p class="text-xs text-gray-300 mt-1">
-
-                    Усього ваших оголошень:
-                    <b>
-                      {myProducts.length}
-                    </b>
-
+                  <p class="text-[10px] text-gray-400 text-center mt-1 font-bold">
+                    👉 Гортайте вбік ({selectedProduct.product_images.length} фото)
                   </p>
 
                 </div>
 
+              ) : selectedProduct.image_url ? (
 
-                <h3 class="text-xs uppercase font-bold text-gray-400 mb-2">
-                  Ваші публікації:
-                </h3>
+                <div class="w-full h-80 bg-gray-900 rounded-2xl flex items-center justify-center">
 
+                  <img
+                    src={selectedProduct.image_url}
+                    class="max-h-full max-w-full object-contain rounded-2xl"
+                  />
 
-                {myProducts.length === 0 ? (
+                </div>
 
-                  <div class="text-center py-8 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
+              ) : (
 
-                    <p class="text-sm">
-                      Ви ще не опублікували жодного товару
-                    </p>
+                <div class="w-full h-44 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 text-4xl">
+                  🖼️
+                </div>
 
-                  </div>
+              )}
 
-                ) : (
-
-                  <div class="space-y-3">
-
-                    {myProducts.map(
-                      prod => (
-
-                        <div
-                          key={prod.id}
-                          class="bg-white p-3 rounded-xl text-[#002f34] flex flex-col gap-2 shadow-sm"
-                        >
-
-                          {/* Верхній рядок */}
-                          <div class="flex gap-3 items-center justify-between">
-
-                            <div class="flex gap-3 items-center overflow-hidden">
-
-                              {prod.image_url ? (
-
-                                <img
-                                  src={prod.image_url}
-                                  alt={prod.title}
-                                  class="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                                />
-
-                              ) : (
-
-                                <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
-                                  🖼️
-                                </div>
-
-                              )}
+            </div>
 
 
-                              <div class="truncate">
+            <div class="flex justify-between items-center mb-1">
 
-                                <h4 class="font-bold text-xs truncate">
-                                  {prod.title}
-                                </h4>
+              <div class="flex gap-2 items-center">
 
-                                <p class="text-xs font-black text-[#002f34] mt-0.5">
-                                  {prod.price_uah} ₴
-                                </p>
-
-                              </div>
-
-                            </div>
+                <span class="text-xs uppercase font-black text-[#002f34] bg-[#23e5bf] px-2 py-0.5 rounded-md">
+                  {selectedProduct.categories?.title ||
+                    'Товар'}
+                </span>
 
 
-                            {/* Редагувати / Видалити */}
-                            <div class="flex gap-1">
+                <span class="text-xs text-gray-500 font-bold">
+                  {selectedProduct.condition ===
+                  'new'
+                    ? '✨ Новий'
+                    : '👌 Вживаний'}
+                </span>
 
-                              <button
-                                onClick={() =>
-                                  startEditing(
-                                    prod
-                                  )
-                                }
-                                class="bg-blue-50 text-blue-600 p-2 rounded-lg text-xs font-bold"
-                                title="Редагувати"
-                              >
-                                ✏️
-                              </button>
+              </div>
 
 
-                              <button
-                                onClick={() =>
-                                  handleDeleteProduct(
-                                    prod.id
-                                  )
-                                }
-                                class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-bold"
-                                title="Видалити"
-                              >
-                                🗑️
-                              </button>
+              <span class="text-xs text-gray-400 font-bold">
+                👁️ {selectedProduct.views_count || 0}
+              </span>
 
-                            </div>
-
-                          </div>
+            </div>
 
 
-                          {/* Перегляди + статус */}
-                          <div class="flex justify-between items-center pt-2 border-t border-gray-100 text-[11px]">
+            {String(
+              selectedProduct.users?.telegram_id
+            ) === TOP_TELEGRAM_ID && (
 
-                            <span class="text-gray-500 font-bold">
-                              Переглядів: 👁️{' '}
-                              {prod.views_count ||
-                                0}
-                            </span>
+              <div class="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg text-xs font-black mt-2">
+                ⭐ ТОП-оголошення
+              </div>
 
-
-                            <button
-                              onClick={() =>
-                                toggleSoldStatus(
-                                  prod
-                                )
-                              }
-                              class={`px-2.5 py-1 rounded-full font-bold transition ${
-                                prod.is_sold
-                                  ? 'bg-gray-200 text-gray-700'
-                                  : 'bg-green-100 text-green-700'
-                              }`}
-                            >
-                              {prod.is_sold
-                                ? 'Позначити "В продажу"'
-                                : 'Позначити "Продано"'}
-                            </button>
-
-                          </div>
-
-
-                          {/* ================================================= */}
-                          {/* НОВА КНОПКА БУСТУ */}
-                          {/* ================================================= */}
-
-                          <button
-                            onClick={() =>
-                              boostProduct(
-                                prod
-                              )
-                            }
-                            disabled={
-                              boostingProductId ===
-                                prod.id ||
-                              prod.is_sold
-                            }
-                            class={`w-full px-3 py-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95 ${
-                              prod.is_sold
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : boostingProductId ===
-                                  prod.id
-                                ? 'bg-amber-50 text-amber-500 cursor-wait'
-                                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                            }`}
-                          >
-
-                            {boostingProductId ===
-                            prod.id ? (
-
-                              <>
-                                <span class="animate-spin">
-                                  ⏳
-                                </span>
-
-                                Створення рахунку...
-
-                              </>
-
-                            ) : prod.is_sold ? (
-
-                              <>
-                                <span>
-                                  🚫
-                                </span>
-
-                                Продане оголошення
-
-                              </>
-
-                            ) : (
-
-                              <>
-                                <span>
-                                  ⭐
-                                </span>
-
-                                Підняти в топ (50 ⭐️)
-
-                              </>
-
-                            )}
-
-                          </button>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                )}
-
-              </main>
             )}
 
-          </div>
+
+            <h2 class="text-xl font-black mt-2 leading-tight">
+              {selectedProduct.title}
+            </h2>
 
 
-          {/* ===================================================== */}
-          {/* MODAL / DETAILED VIEW */}
-          {/* ===================================================== */}
+            <div class="text-2xl font-black text-[#002f34] my-2">
+              {selectedProduct.price_uah} ₴
+            </div>
 
-          {selectedProduct && (
 
-            <div class="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            {selectedProduct.description && (
 
-              <div class="bg-white text-[#002f34] w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 relative">
+              <div class="my-4 border-t pt-3 border-gray-100">
+
+                <h4 class="text-xs font-bold text-gray-500 uppercase mb-1">
+                  Опис:
+                </h4>
+
+                <p class="text-xs text-gray-700 whitespace-pre-line leading-relaxed">
+                  {selectedProduct.description}
+                </p>
+
+              </div>
+
+            )}
+
+
+            <div class="my-4 border-t pt-3 border-gray-100">
+
+              <div class="flex justify-between items-center mb-2">
+
+                <h4 class="text-xs font-bold text-gray-500 uppercase">
+                  Рейтинг продавця:
+                </h4>
+
+                <span class="text-xs font-black text-amber-500">
+                  ⭐ {avgRating
+                    ? `${avgRating} / 5`
+                    : 'Немає оцінок'}
+                </span>
+
+              </div>
+
+
+              <form
+                onSubmit={
+                  handleAddReview
+                }
+                class="bg-gray-50 p-3 rounded-xl mb-3 space-y-2"
+              >
+
+                <div class="flex items-center gap-2">
+
+                  <span class="text-xs font-bold text-gray-600">
+                    Оцінка:
+                  </span>
+
+                  <select
+                    value={newRating}
+                    onChange={
+                      e =>
+                        setNewRating(
+                          e.target.value
+                        )
+                    }
+                    class="border rounded p-1 text-xs"
+                  >
+
+                    <option value="5">
+                      ⭐⭐⭐⭐⭐ (5)
+                    </option>
+
+                    <option value="4">
+                      ⭐⭐⭐⭐ (4)
+                    </option>
+
+                    <option value="3">
+                      ⭐⭐⭐ (3)
+                    </option>
+
+                    <option value="2">
+                      ⭐⭐ (2)
+                    </option>
+
+                    <option value="1">
+                      ⭐ (1)
+                    </option>
+
+                  </select>
+
+                </div>
+
+
+                <input
+                  type="text"
+                  placeholder="Напишіть відгук про продавця..."
+                  value={newReviewComment}
+                  onChange={
+                    e =>
+                      setNewReviewComment(
+                        e.target.value
+                      )
+                  }
+                  class="w-full border rounded-lg p-2 text-xs"
+                />
+
 
                 <button
-                  onClick={() =>
-                    setSelectedProduct(
-                      null
-                    )
-                  }
-                  class="absolute top-4 right-4 bg-gray-200 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center z-10"
+                  type="submit"
+                  class="w-full bg-gray-800 text-white font-bold py-1.5 rounded-lg text-xs"
                 >
-                  ✕
+                  Залишити відгук
                 </button>
 
+              </form>
 
-                <div class="w-full mb-4">
 
-                  {selectedProduct.product_images &&
-                  selectedProduct
-                    .product_images
-                    .length > 0 ? (
+              <div class="space-y-2 max-h-32 overflow-y-auto no-scrollbar">
 
-                    <div>
+                {sellerReviews.map(
+                  rev => (
 
-                      <div class="flex gap-2 overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-2xl bg-gray-900 h-80">
+                    <div
+                      key={rev.id}
+                      class="bg-gray-50 p-2 rounded-lg text-xs"
+                    >
 
-                        {selectedProduct.product_images.map(
-                          (img, idx) => (
+                      <div class="flex justify-between font-bold text-amber-500">
 
-                            <div
-                              key={idx}
-                              class="snap-center flex-shrink-0 w-full h-full flex items-center justify-center bg-gray-900"
-                            >
+                        <span>
+                          {'⭐'.repeat(
+                            rev.rating
+                          )}
+                        </span>
 
-                              <img
-                                src={
-                                  img.image_url
-                                }
-                                class="max-h-full max-w-full object-contain"
-                              />
-
-                            </div>
-
-                          )
-                        )}
+                        <span class="text-[10px] text-gray-400">
+                          {new Date(
+                            rev.created_at
+                          ).toLocaleDateString()}
+                        </span>
 
                       </div>
 
 
-                      <p class="text-[10px] text-gray-400 text-center mt-1 font-bold">
-                        👉 Гортайте вбік (
-                        {
-                          selectedProduct
-                            .product_images
-                            .length
-                        }{' '}
-                        фото)
+                      <p class="text-gray-700 mt-0.5">
+                        {rev.comment}
                       </p>
 
                     </div>
 
-                  ) : selectedProduct.image_url ? (
-
-                    <div class="w-full h-80 bg-gray-900 rounded-2xl flex items-center justify-center">
-
-                      <img
-                        src={
-                          selectedProduct.image_url
-                        }
-                        class="max-h-full max-w-full object-contain rounded-2xl"
-                      />
-
-                    </div>
-
-                  ) : (
-
-                    <div class="w-full h-44 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 text-4xl">
-                      🖼️
-                    </div>
-
-                  )}
-
-                </div>
-
-
-                <div class="flex justify-between items-center mb-1">
-
-                  <div class="flex gap-2 items-center">
-
-                    <span class="text-xs uppercase font-black text-[#002f34] bg-[#23e5bf] px-2 py-0.5 rounded-md">
-                      {selectedProduct.categories?.title ||
-                        'Товар'}
-                    </span>
-
-
-                    <span class="text-xs text-gray-500 font-bold">
-                      {selectedProduct.condition ===
-                      'new'
-                        ? '✨ Новий'
-                        : '👌 Вживаний'}
-                    </span>
-
-                  </div>
-
-
-                  <span class="text-xs text-gray-400 font-bold">
-                    👁️{' '}
-                    {selectedProduct.views_count ||
-                      0}
-                  </span>
-
-                </div>
-
-
-                <h2 class="text-xl font-black mt-2 leading-tight">
-                  {selectedProduct.title}
-                </h2>
-
-
-                <div class="text-2xl font-black text-[#002f34] my-2">
-                  {selectedProduct.price_uah} ₴
-                </div>
-
-
-                {selectedProduct.description && (
-
-                  <div class="my-4 border-t pt-3 border-gray-100">
-
-                    <h4 class="text-xs font-bold text-gray-500 uppercase mb-1">
-                      Опис:
-                    </h4>
-
-                    <p class="text-xs text-gray-700 whitespace-pre-line leading-relaxed">
-                      {selectedProduct.description}
-                    </p>
-
-                  </div>
-
+                  )
                 )}
-
-
-                {/* Seller Reviews */}
-                <div class="my-4 border-t pt-3 border-gray-100">
-
-                  <div class="flex justify-between items-center mb-2">
-
-                    <h4 class="text-xs font-bold text-gray-500 uppercase">
-                      Рейтинг продавця:
-                    </h4>
-
-                    <span class="text-xs font-black text-amber-500">
-                      ⭐{' '}
-                      {avgRating
-                        ? `${avgRating} / 5`
-                        : 'Немає оцінок'}
-                    </span>
-
-                  </div>
-
-
-                  {/* Leave review */}
-                  <form
-                    onSubmit={
-                      handleAddReview
-                    }
-                    class="bg-gray-50 p-3 rounded-xl mb-3 space-y-2"
-                  >
-
-                    <div class="flex items-center gap-2">
-
-                      <span class="text-xs font-bold text-gray-600">
-                        Оцінка:
-                      </span>
-
-                      <select
-                        value={newRating}
-                        onChange={e =>
-                          setNewRating(
-                            e.target.value
-                          )
-                        }
-                        class="border rounded p-1 text-xs"
-                      >
-
-                        <option value="5">
-                          ⭐⭐⭐⭐⭐ (5)
-                        </option>
-
-                        <option value="4">
-                          ⭐⭐⭐⭐ (4)
-                        </option>
-
-                        <option value="3">
-                          ⭐⭐⭐ (3)
-                        </option>
-
-                        <option value="2">
-                          ⭐⭐ (2)
-                        </option>
-
-                        <option value="1">
-                          ⭐ (1)
-                        </option>
-
-                      </select>
-
-                    </div>
-
-
-                    <input
-                      type="text"
-                      placeholder="Напишіть відгук про продавця..."
-                      value={
-                        newReviewComment
-                      }
-                      onChange={e =>
-                        setNewReviewComment(
-                          e.target.value
-                        )
-                      }
-                      class="w-full border rounded-lg p-2 text-xs"
-                    />
-
-
-                    <button
-                      type="submit"
-                      class="w-full bg-gray-800 text-white font-bold py-1.5 rounded-lg text-xs"
-                    >
-                      Залишити відгук
-                    </button>
-
-                  </form>
-
-
-                  {/* Reviews list */}
-                  <div class="space-y-2 max-h-32 overflow-y-auto no-scrollbar">
-
-                    {sellerReviews.map(
-                      rev => (
-
-                        <div
-                          key={rev.id}
-                          class="bg-gray-50 p-2 rounded-lg text-xs"
-                        >
-
-                          <div class="flex justify-between font-bold text-amber-500">
-
-                            <span>
-                              {'⭐'.repeat(
-                                rev.rating
-                              )}
-                            </span>
-
-                            <span class="text-[10px] text-gray-400">
-                              {new Date(
-                                rev.created_at
-                              ).toLocaleDateString()}
-                            </span>
-
-                          </div>
-
-
-                          <p class="text-gray-700 mt-0.5">
-                            {rev.comment}
-                          </p>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                </div>
-
-
-                {/* Bottom buttons */}
-                <div class="flex gap-2 mt-5">
-
-                  <button
-                    onClick={() =>
-                      openSellerChat(
-                        selectedProduct
-                          .users
-                          ?.username
-                      )
-                    }
-                    class="flex-1 bg-[#002f34] text-[#23e5bf] font-black py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-                  >
-                    <span>💬</span>
-                    Написати продавцю
-                  </button>
-
-
-                  <button
-                    onClick={e =>
-                      toggleFavorite(
-                        selectedProduct,
-                        e
-                      )
-                    }
-                    class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition"
-                  >
-                    {favoriteIds.includes(
-                      selectedProduct.id
-                    )
-                      ? '❤️'
-                      : '🤍'}
-                  </button>
-
-
-                  <button
-                    onClick={() =>
-                      shareProduct(
-                        selectedProduct
-                      )
-                    }
-                    class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition"
-                  >
-                    🔗
-                  </button>
-
-                </div>
 
               </div>
 
             </div>
 
-          )}
+
+            <div class="flex gap-2 mt-5">
+
+              <button
+                onClick={() =>
+                  openSellerChat(
+                    selectedProduct
+                      .users?.username
+                  )
+                }
+                class="flex-1 bg-[#002f34] text-[#23e5bf] font-black py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+              >
+                <span>💬</span>
+                Написати продавцю
+              </button>
 
 
-          {/* ===================================================== */}
-          {/* BOTTOM NAVIGATION */}
-          {/* ===================================================== */}
-
-          <nav class="fixed bottom-0 left-0 right-0 bg-[#002f34] border-t border-[#104b50] flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
-
-            <button
-              onClick={() =>
-                setTab('catalog')
-              }
-              class={`flex flex-col items-center text-xs font-bold transition ${
-                tab === 'catalog'
-                  ? 'text-[#23e5bf]'
-                  : 'text-gray-400'
-              }`}
-            >
-
-              <span class="text-base mb-0.5">
-                🔍
-              </span>
-
-              <span>
-                Каталог
-              </span>
-
-            </button>
+              <button
+                onClick={e =>
+                  toggleFavorite(
+                    selectedProduct,
+                    e
+                  )
+                }
+                class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition"
+              >
+                {favoriteIds.includes(
+                  selectedProduct.id
+                )
+                  ? '❤️'
+                  : '🤍'}
+              </button>
 
 
-            <button
-              onClick={() =>
-                setTab('favorites')
-              }
-              class={`flex flex-col items-center text-xs font-bold transition ${
-                tab === 'favorites'
-                  ? 'text-[#23e5bf]'
-                  : 'text-gray-400'
-              }`}
-            >
+              <button
+                onClick={() =>
+                  shareProduct(
+                    selectedProduct
+                  )
+                }
+                class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition"
+              >
+                🔗
+              </button>
 
-              <span class="text-base mb-0.5">
-                ❤️
-              </span>
+            </div>
 
-              <span>
-                Обране
-              </span>
-
-            </button>
-
-
-            <button
-              onClick={() =>
-                setTab('add')
-              }
-              class={`flex flex-col items-center text-xs font-bold transition ${
-                tab === 'add'
-                  ? 'text-[#23e5bf]'
-                  : 'text-gray-400'
-              }`}
-            >
-
-              <span class="text-base mb-0.5">
-                ➕
-              </span>
-
-              <span>
-                Подати
-              </span>
-
-            </button>
-
-
-            <button
-              onClick={() =>
-                setTab('profile')
-              }
-              class={`flex flex-col items-center text-xs font-bold transition ${
-                tab === 'profile'
-                  ? 'text-[#23e5bf]'
-                  : 'text-gray-400'
-              }`}
-            >
-
-              <span class="text-base mb-0.5">
-                👤
-              </span>
-
-              <span>
-                Профіль
-              </span>
-
-            </button>
-
-          </nav>
+          </div>
 
         </div>
-      );
-    }
+
+      )}
 
 
-    ReactDOM
-      .createRoot(
-        document.getElementById('root')
-      )
-      .render(
-        <App />
-      );
+      <nav class="fixed bottom-0 left-0 right-0 bg-[#002f34] border-t border-[#104b50] flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
 
-  </script>
+        <button
+          onClick={() =>
+            setTab('catalog')
+          }
+          class={`flex flex-col items-center text-xs font-bold transition ${
+            tab === 'catalog'
+              ? 'text-[#23e5bf]'
+              : 'text-gray-400'
+          }`}
+        >
+
+          <span class="text-base mb-0.5">
+            🔍
+          </span>
+
+          <span>
+            Каталог
+          </span>
+
+        </button>
+
+
+        <button
+          onClick={() =>
+            setTab('favorites')
+          }
+          class={`flex flex-col items-center text-xs font-bold transition ${
+            tab === 'favorites'
+              ? 'text-[#23e5bf]'
+              : 'text-gray-400'
+          }`}
+        >
+
+          <span class="text-base mb-0.5">
+            ❤️
+          </span>
+
+          <span>
+            Обране
+          </span>
+
+        </button>
+
+
+        <button
+          onClick={() =>
+            setTab('add')
+          }
+          class={`flex flex-col items-center text-xs font-bold transition ${
+            tab === 'add'
+              ? 'text-[#23e5bf]'
+              : 'text-gray-400'
+          }`}
+        >
+
+          <span class="text-base mb-0.5">
+            ➕
+          </span>
+
+          <span>
+            Подати
+          </span>
+
+        </button>
+
+
+        <button
+          onClick={() =>
+            setTab('profile')
+          }
+          class={`flex flex-col items-center text-xs font-bold transition ${
+            tab === 'profile'
+              ? 'text-[#23e5bf]'
+              : 'text-gray-400'
+          }`}
+        >
+
+          <span class="text-base mb-0.5">
+            👤
+          </span>
+
+          <span>
+            Профіль
+          </span>
+
+        </button>
+
+      </nav>
+
+    </div>
+
+  );
+}
+
+
+ReactDOM
+  .createRoot(
+    document.getElementById('root')
+  )
+  .render(<App />);
+
+</script>
 
 </body>
 </html>
