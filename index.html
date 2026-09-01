@@ -12,23 +12,23 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
-      background-color: #f4f4f5;
-      color: #000000;
+      background-color: #002f34;
+      color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     
-    /* Жорстке фіксування кольору тексту для будь-яких тем Telegram */
+    /* Жорстке фіксування стилів вводу */
     input, textarea, select {
-      color: #000000 !important;
-      -webkit-text-fill-color: #000000 !important;
+      color: #002f34 !important;
+      -webkit-text-fill-color: #002f34 !important;
       background-color: #ffffff !important;
       opacity: 1 !important;
     }
     input::placeholder, textarea::placeholder {
-      color: #9ca3af !important;
-      -webkit-text-fill-color: #9ca3af !important;
+      color: #64748b !important;
+      -webkit-text-fill-color: #64748b !important;
     }
   </style>
 </head>
@@ -71,7 +71,7 @@
 
       async function fetchProducts(catId = null) {
         setLoading(true);
-        let query = supabaseClient.from('products').select('*, categories(title)').eq('status', 'active').order('created_at', { ascending: false });
+        let query = supabaseClient.from('products').select('*, categories(title), users(username)').eq('status', 'active').order('created_at', { ascending: false });
         if (catId) query = query.eq('category_id', catId);
         
         const { data, error } = await query;
@@ -101,7 +101,6 @@
         const user = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user' };
 
         try {
-          // 1. Перевіряємо або створюємо юзера
           let { data: dbUser } = await supabaseClient.from('users').select('id').eq('telegram_id', user.id).maybeSingle();
           
           if (!dbUser) {
@@ -113,7 +112,6 @@
             dbUser = newUser;
           }
 
-          // 2. Завантажуємо зображення у Storage (якщо вибрано)
           let imageUrl = null;
           if (imageFile) {
             const fileExt = imageFile.name.split('.').pop();
@@ -132,7 +130,6 @@
             imageUrl = publicUrlData.publicUrl;
           }
 
-          // 3. Створюємо товар
           const { error: prodErr } = await supabaseClient.from('products').insert([{
             user_id: dbUser.id,
             title,
@@ -156,26 +153,33 @@
         }
       }
 
+      function openSellerChat(username) {
+        if (!username) return alert('У продавця немає юзернейму в Telegram!');
+        tg?.openTelegramLink(`https://t.me/${username}`);
+      }
+
       return (
-        <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-zinc-100 text-gray-900">
+        <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-[#002f34] text-white">
           <div>
-            <header class="p-4 bg-white shadow-sm flex justify-between items-center sticky top-0 z-10 border-b">
+            {/* Header */}
+            <header class="p-4 bg-[#002f34] flex justify-between items-center sticky top-0 z-10 border-b border-[#104b50]">
               <div class="flex items-center space-x-2">
-                <span class="text-2xl">🛒</span>
-                <h1 class="text-xl font-bold text-gray-900">OLX Telegram</h1>
+                <span class="text-2xl font-black text-[#23e5bf]">OLX</span>
+                <span class="text-xs bg-[#104b50] text-[#23e5bf] font-bold px-2 py-0.5 rounded">UA</span>
               </div>
-              <span class="text-xs bg-blue-50 text-blue-600 font-semibold px-2.5 py-1 rounded-full border border-blue-200">
+              <span class="text-xs bg-[#104b50] text-gray-200 font-medium px-2.5 py-1 rounded-full border border-[#1b646a]">
                 👤 {tg?.initDataUnsafe?.user?.first_name || 'Користувач'}
               </span>
             </header>
 
+            {/* Catalog */}
             {tab === 'catalog' && (
               <main class="p-4">
                 <div class="flex gap-2 overflow-x-auto pb-3 mb-3 no-scrollbar">
                   <button
                     onClick={() => handleCategorySelect(null)}
-                    class={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                      selectedCategory === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 border border-gray-200'
+                    class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                      selectedCategory === null ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'
                     }`}
                   >
                     Всі товари
@@ -184,8 +188,8 @@
                     <button
                       key={cat.id}
                       onClick={() => handleCategorySelect(cat.id)}
-                      class={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                        selectedCategory === cat.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 border border-gray-200'
+                      class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                        selectedCategory === cat.id ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'
                       }`}
                     >
                       {cat.title}
@@ -194,35 +198,41 @@
                 </div>
 
                 {loading ? (
-                  <div class="text-center py-16 text-gray-500 font-medium">Завантаження оголошень...</div>
+                  <div class="text-center py-16 text-[#23e5bf] font-medium">Завантаження оголошень...</div>
                 ) : products.length === 0 ? (
-                  <div class="text-center py-16 text-gray-500 bg-white rounded-xl border border-dashed p-6">
-                    <p class="text-2xl mb-2">📦</p>
-                    <p class="font-medium text-gray-700">Оголошень поки немає</p>
-                    <p class="text-xs text-gray-500 mt-1">Будьте першим, хто створить товар!</p>
+                  <div class="text-center py-16 text-gray-300 bg-[#00383e] rounded-2xl border border-[#104b50] p-6">
+                    <p class="text-3xl mb-2">📦</p>
+                    <p class="font-bold text-white">Оголошень поки немає</p>
+                    <p class="text-xs text-gray-400 mt-1">Опублікуйте першу пропозицію!</p>
                   </div>
                 ) : (
                   <div class="grid grid-cols-2 gap-3">
                     {products.map(prod => (
-                      <div key={prod.id} class="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col justify-between p-3 border border-gray-100">
+                      <div key={prod.id} class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md">
                         <div>
                           {prod.image_url ? (
-                            <img src={prod.image_url} alt={prod.title} class="w-full h-28 object-cover rounded-lg mb-2.5" />
+                            <img src={prod.image_url} alt={prod.title} class="w-full h-28 object-cover rounded-lg mb-2" />
                           ) : (
-                            <div class="w-full h-28 bg-gray-100 rounded-lg mb-2.5 flex items-center justify-center text-gray-400 text-2xl font-light">
+                            <div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
                               🖼️
                             </div>
                           )}
-                          <span class="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                          <span class="text-[9px] uppercase font-black text-[#002f34] bg-[#23e5bf] px-1.5 py-0.5 rounded">
                             {prod.categories?.title || 'Товар'}
                           </span>
-                          <h3 class="font-semibold text-sm text-gray-800 line-clamp-2 mt-1.5 leading-snug">{prod.title}</h3>
+                          <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 mt-1 leading-snug">{prod.title}</h3>
                           {prod.description && (
-                            <p class="text-xs text-gray-500 line-clamp-1 mt-1">{prod.description}</p>
+                            <p class="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{prod.description}</p>
                           )}
                         </div>
-                        <div class="mt-3 pt-2 border-t border-gray-50 flex justify-between items-center">
-                          <span class="text-base font-bold text-emerald-600">{prod.price_uah} ₴</span>
+                        <div class="mt-2 pt-2 border-t border-gray-100">
+                          <div class="text-sm font-black text-[#002f34] mb-1.5">{prod.price_uah} ₴</div>
+                          <button
+                            onClick={() => openSellerChat(prod.users?.username)}
+                            class="w-full bg-[#002f34] text-[#23e5bf] font-bold text-[11px] py-1.5 rounded-lg flex items-center justify-center gap-1 active:scale-95 transition"
+                          >
+                            <span>💬</span> Написати
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -231,26 +241,27 @@
               </main>
             )}
 
+            {/* Form */}
             {tab === 'add' && (
               <main class="p-4">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                  <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <span>➕</span> Нове оголошення
+                <div class="bg-[#00383e] p-5 rounded-2xl border border-[#104b50] shadow-lg">
+                  <h2 class="text-lg font-black text-white mb-4 flex items-center gap-2">
+                    <span class="text-[#23e5bf]">➕</span> Нове оголошення
                   </h2>
                   <form onSubmit={handleCreateProduct} class="space-y-4">
                     <div>
-                      <label class="block text-xs font-semibold text-gray-700 mb-1">Назва товару *</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Назва товару *</label>
                       <input
                         type="text"
                         required
                         placeholder="напр. Навушники AirPods Pro"
                         value={title}
                         onChange={e => setTitle(e.target.value)}
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-semibold text-gray-700 mb-1">Ціна (в гривнях ₴) *</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Ціна (в гривнях ₴) *</label>
                       <input
                         type="number"
                         required
@@ -258,29 +269,29 @@
                         placeholder="0.00"
                         value={price}
                         onChange={e => setPrice(e.target.value)}
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-semibold text-gray-700 mb-1">Фото товару</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару</label>
                       <input
                         type="file"
                         accept="image/*"
                         onChange={handleFileChange}
-                        class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        class="w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#23e5bf] file:text-[#002f34]"
                       />
                       {imagePreview && (
                         <div class="mt-2">
-                          <img src={imagePreview} alt="Прев'ю" class="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                          <img src={imagePreview} alt="Прев'ю" class="w-full h-32 object-cover rounded-xl border border-[#104b50]" />
                         </div>
                       )}
                     </div>
                     <div>
-                      <label class="block text-xs font-semibold text-gray-700 mb-1">Категорія</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Категорія</label>
                       <select
                         value={categoryId}
                         onChange={e => setCategoryId(e.target.value)}
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
                       >
                         <option value="">Оберіть категорію</option>
                         {categories.map(cat => (
@@ -289,19 +300,19 @@
                       </select>
                     </div>
                     <div>
-                      <label class="block text-xs font-semibold text-gray-700 mb-1">Опис товару</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Опис товару</label>
                       <textarea
                         rows="3"
-                        placeholder="Розкажіть про стан товару, комплект..."
+                        placeholder="Розкажіть про стан товару..."
                         value={description}
                         onChange={e => setDescription(e.target.value)}
-                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                        class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
                       ></textarea>
                     </div>
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-sm hover:bg-blue-700 active:scale-[0.99] transition disabled:opacity-50"
+                      class="w-full bg-[#23e5bf] text-[#002f34] font-black py-3 rounded-xl shadow-md hover:bg-[#1fd6b2] active:scale-[0.99] transition disabled:opacity-50"
                     >
                       {isSubmitting ? 'Публікація...' : 'Опублікувати оголошення'}
                     </button>
@@ -311,17 +322,18 @@
             )}
           </div>
 
-          <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
+          {/* Bottom Nav */}
+          <nav class="fixed bottom-0 left-0 right-0 bg-[#002f34] border-t border-[#104b50] flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
             <button
               onClick={() => setTab('catalog')}
-              class={`flex flex-col items-center text-xs font-medium transition ${tab === 'catalog' ? 'text-blue-600 font-bold' : 'text-gray-400'}`}
+              class={`flex flex-col items-center text-xs font-bold transition ${tab === 'catalog' ? 'text-[#23e5bf]' : 'text-gray-400'}`}
             >
               <span class="text-base mb-0.5">🔍</span>
               <span>Каталог</span>
             </button>
             <button
               onClick={() => setTab('add')}
-              class={`flex flex-col items-center text-xs font-medium transition ${tab === 'add' ? 'text-blue-600 font-bold' : 'text-gray-400'}`}
+              class={`flex flex-col items-center text-xs font-bold transition ${tab === 'add' ? 'text-[#23e5bf]' : 'text-gray-400'}`}
             >
               <span class="text-base mb-0.5">➕</span>
               <span>Подати</span>
