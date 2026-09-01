@@ -18,9 +18,17 @@
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Жорстке фіксування кольору тексту для будь-яких тем Telegram */
     input, textarea, select {
-      color: #111827 !important;
+      color: #000000 !important;
+      -webkit-text-fill-color: #000000 !important;
       background-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    input::placeholder, textarea::placeholder {
+      color: #9ca3af !important;
+      -webkit-text-fill-color: #9ca3af !important;
     }
   </style>
 </head>
@@ -45,6 +53,8 @@
       const [price, setPrice] = React.useState('');
       const [description, setDescription] = React.useState('');
       const [categoryId, setCategoryId] = React.useState('');
+      const [imageFile, setImageFile] = React.useState(null);
+      const [imagePreview, setImagePreview] = React.useState(null);
       const [isSubmitting, setIsSubmitting] = React.useState(false);
 
       React.useEffect(() => {
@@ -75,6 +85,14 @@
         fetchProducts(newCat);
       }
 
+      function handleFileChange(e) {
+        const file = e.target.files[0];
+        if (file) {
+          setImageFile(file);
+          setImagePreview(URL.createObjectURL(file));
+        }
+      }
+
       async function handleCreateProduct(e) {
         e.preventDefault();
         if (!title || !price) return alert('Будь ласка, вкажіть назву та ціну товару!');
@@ -83,6 +101,7 @@
         const user = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user' };
 
         try {
+          // 1. Перевіряємо або створюємо юзера
           let { data: dbUser } = await supabaseClient.from('users').select('id').eq('telegram_id', user.id).maybeSingle();
           
           if (!dbUser) {
@@ -94,18 +113,40 @@
             dbUser = newUser;
           }
 
+          // 2. Завантажуємо зображення у Storage (якщо вибрано)
+          let imageUrl = null;
+          if (imageFile) {
+            const fileExt = imageFile.name.split('.').pop();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            
+            const { error: uploadErr } = await supabaseClient.storage
+              .from('product-images')
+              .upload(fileName, imageFile);
+
+            if (uploadErr) throw uploadErr;
+
+            const { data: publicUrlData } = supabaseClient.storage
+              .from('product-images')
+              .getPublicUrl(fileName);
+
+            imageUrl = publicUrlData.publicUrl;
+          }
+
+          // 3. Створюємо товар
           const { error: prodErr } = await supabaseClient.from('products').insert([{
             user_id: dbUser.id,
             title,
             price_uah: parseFloat(price),
             description,
-            category_id: categoryId ? parseInt(categoryId) : null
+            category_id: categoryId ? parseInt(categoryId) : null,
+            image_url: imageUrl
           }]);
 
           if (prodErr) throw prodErr;
 
           alert('🎉 Оголошення успішно опубліковано!');
           setTitle(''); setPrice(''); setDescription(''); setCategoryId('');
+          setImageFile(null); setImagePreview(null);
           setTab('catalog');
           fetchProducts();
         } catch (err) {
@@ -165,9 +206,13 @@
                     {products.map(prod => (
                       <div key={prod.id} class="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col justify-between p-3 border border-gray-100">
                         <div>
-                          <div class="w-full h-28 bg-gray-100 rounded-lg mb-2.5 flex items-center justify-center text-gray-400 text-2xl font-light">
-                            🖼️
-                          </div>
+                          {prod.image_url ? (
+                            <img src={prod.image_url} alt={prod.title} class="w-full h-28 object-cover rounded-lg mb-2.5" />
+                          ) : (
+                            <div class="w-full h-28 bg-gray-100 rounded-lg mb-2.5 flex items-center justify-center text-gray-400 text-2xl font-light">
+                              🖼️
+                            </div>
+                          )}
                           <span class="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
                             {prod.categories?.title || 'Товар'}
                           </span>
@@ -215,6 +260,20 @@
                         onChange={e => setPrice(e.target.value)}
                         class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-gray-700 mb-1">Фото товару</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                      {imagePreview && (
+                        <div class="mt-2">
+                          <img src={imagePreview} alt="Прев'ю" class="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label class="block text-xs font-semibold text-gray-700 mb-1">Категорія</label>
