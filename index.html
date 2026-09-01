@@ -725,7 +725,46 @@
                               <p class="text-xs font-black text-[#002f34] mt-0.5">{prod.price_uah} ₴</p>
                             </div>
                           </div>
-                          <div class="flex gap-1">
+                          <div class="flex gap-1 items-center">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const { data, error } = await supabaseClient.functions.invoke('create-telegram-invoice', {
+                                    body: { 
+                                      productId: prod.id, 
+                                      stars: 50, 
+                                      title: "Підняти оголошення в топ",
+                                      description: "Закріплення товару на перших позиціях на 3 дні"
+                                    }
+                                  });
+
+                                  if (error || !data?.invoiceLink) {
+                                    alert('Помилка створення рахунку: ' + (error?.message || 'Невідома помилка'));
+                                    return;
+                                  }
+
+                                  if (window.Telegram?.WebApp) {
+                                    window.Telegram.WebApp.openInvoice(data.invoiceLink, async (status) => {
+                                      if (status === 'paid') {
+                                        alert('Оплата успішна! Ваше оголошення піднято в топ 🚀');
+                                        fetchProducts();
+                                      } else {
+                                        console.log('Оплату скасовано або закрито');
+                                      }
+                                    });
+                                  } else {
+                                    window.open(data.invoiceLink, '_blank');
+                                  }
+                                } catch (err) {
+                                  alert('Сталася помилка при спробі оплати.');
+                                }
+                              }}
+                              class="bg-amber-100 text-amber-800 px-2 py-2 rounded-lg text-xs font-bold flex items-center gap-1 active:scale-95 transition"
+                              title="Підняти в топ"
+                            >
+                              <span>⭐</span> 50 ⭐️
+                            </button>
+
                             <button
                               onClick={() => startEditing(prod)}
                               class="bg-blue-50 text-blue-600 p-2 rounded-lg text-xs font-bold"
