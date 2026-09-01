@@ -45,8 +45,10 @@
       const [products, setProducts] = React.useState([]);
       const [categories, setCategories] = React.useState([]);
       const [selectedCategory, setSelectedCategory] = React.useState(null);
+      const [searchQuery, setSearchQuery] = React.useState('');
+      const [sortOption, setSortOption] = React.useState('newest'); // 'newest', 'price_asc', 'price_desc'
       const [loading, setLoading] = React.useState(true);
-      const [tab, setTab] = React.useState('catalog'); // 'catalog', 'add', 'profile'
+      const [tab, setTab] = React.useState('catalog');
 
       const [selectedProduct, setSelectedProduct] = React.useState(null);
 
@@ -54,11 +56,11 @@
       const [price, setPrice] = React.useState('');
       const [description, setDescription] = React.useState('');
       const [categoryId, setCategoryId] = React.useState('');
-      const [imageFile, setImageFile] = React.useState(null);
-      const [imagePreview, setImagePreview] = React.useState(null);
+      const [imageFiles, setImageFiles] = React.useState([]);
+      const [imagePreviews, setImagePreviews] = React.useState([]);
       const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-      const currentUser = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user', first_name: 'Гість' };
+      const currentUser = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user', first_name: 'Користувач' };
 
       React.useEffect(() => {
         tg?.ready();
@@ -68,37 +70,35 @@
       }, []);
 
       async function fetchCategories() {
-        const { data, error } = await supabaseClient.from('categories').select('*');
-        if (!error && data) setCategories(data);
+        const { data } = await supabaseClient.from('categories').select('*');
+        if (data) setCategories(data);
       }
 
-      async function fetchProducts(catId = null) {
+      async function fetchProducts() {
         setLoading(true);
-        let query = supabaseClient.from('products').select('*, categories(title), users!inner(telegram_id, username)').eq('status', 'active').order('created_at', { ascending: false });
-        if (catId) query = query.eq('category_id', catId);
+        let { data, error } = await supabaseClient
+          .from('products')
+          .select('*, categories(title), users!inner(telegram_id, username), product_images(image_url)')
+          .order('created_at', { ascending: false });
         
-        const { data, error } = await query;
         if (!error && data) setProducts(data);
         setLoading(false);
       }
 
-      function handleCategorySelect(id) {
-        const newCat = selectedCategory === id ? null : id;
-        setSelectedCategory(newCat);
-        fetchProducts(newCat);
-      }
-
-      function handleFileChange(e) {
-        const file = e.target.files[0];
-        if (file) {
-          setImageFile(file);
-          setImagePreview(URL.createObjectURL(file));
+      function handleFilesChange(e) {
+        const files = Array.from(e.target.files);
+        if (files.length > 5) {
+          alert('Можна вибрати максимум 5 фотографій!');
+          return;
         }
+        setImageFiles(files);
+        const previews = files.map(file => URL.createObjectURL(file));
+        setImagePreviews(previews);
       }
 
       async function handleCreateProduct(e) {
         e.preventDefault();
-        if (!title || !price) return alert('Будь ласка, вкажіть назву та ціну товару!');
+        if (!title || !price) return alert('Будь ласка, вкажіть назву та ціну!');
         
         setIsSubmitting(true);
 
@@ -106,50 +106,58 @@
           let { data: dbUser } = await supabaseClient.from('users').select('id').eq('telegram_id', currentUser.id).maybeSingle();
           
           if (!dbUser) {
-            const { data: newUser, error: userErr } = await supabaseClient.from('users').insert([{
+            const { data: newUser } = await supabaseClient.from('users').insert([{
               telegram_id: currentUser.id,
               username: currentUser.username || `user_${currentUser.id}`
             }]).select().single();
-            if (userErr) throw userErr;
             dbUser = newUser;
           }
 
-          let imageUrl = null;
-          if (imageFile) {
-            const fileExt = imageFile.name.split('.').pop();
+          let uploadedUrls = [];
+          for (let file of imageFiles) {
+            const fileExt = file.name.split('.').pop();
             const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
             
             const { error: uploadErr } = await supabaseClient.storage
               .from('product-images')
-              .upload(fileName, imageFile);
+              .upload(fileName, file);
 
-            if (uploadErr) throw uploadErr;
-
-            const { data: publicUrlData } = supabaseClient.storage
-              .from('product-images')
-              .getPublicUrl(fileName);
-
-            imageUrl = publicUrlData.publicUrl;
+            if (!uploadErr) {
+              const { data: publicUrlData } = supabaseClient.storage
+                .from('product-images')
+                .getPublicUrl(fileName);
+              uploadedUrls.push(publicUrlData.publicUrl);
+            }
           }
 
-          const { error: prodErr } = await supabaseClient.from('products').insert([{
+          const mainImage = uploadedUrls.length > 0 ? uploadedUrls[0] : null;
+
+          const { data: newProduct, error: prodErr } = await supabaseClient.from('products').insert([{
             user_id: dbUser.id,
             title,
             price_uah: parseFloat(price),
             description,
             category_id: categoryId ? parseInt(categoryId) : null,
-            image_url: imageUrl
-          }]);
+            image_url: mainImage
+          }]).select().single();
 
           if (prodErr) throw prodErr;
 
-          alert('🎉 Оголошення успішно опубліковано!');
+          if (uploadedUrls.length > 0 && newProduct) {
+            const galleryData = uploadedUrls.map(url => ({
+              product_id: newProduct.id,
+              image_url: url
+            }));
+            await supabaseClient.from('product_images').insert(galleryData);
+          }
+
+          alert('🎉 Оголошення опубліковано!');
           setTitle(''); setPrice(''); setDescription(''); setCategoryId('');
-          setImageFile(null); setImagePreview(null);
+          setImageFiles([]); setImagePreviews([]);
           setTab('catalog');
           fetchProducts();
         } catch (err) {
-          alert('Помилка при публікації: ' + err.message);
+          alert('Помилка: ' + err.message);
         } finally {
           setIsSubmitting(false);
         }
@@ -157,9 +165,10 @@
 
       async function handleDeleteProduct(id) {
         if (!confirm('Ви дійсно хочете видалити це оголошення?')) return;
+        
         const { error } = await supabaseClient.from('products').delete().eq('id', id);
         if (!error) {
-          alert('Оголошення видалено!');
+          alert('Оголошення успішно видалено!');
           fetchProducts();
         } else {
           alert('Помилка видалення: ' + error.message);
@@ -167,7 +176,7 @@
       }
 
       function openSellerChat(username) {
-        if (!username) return alert('У продавця немає юзернейму в Telegram!');
+        if (!username) return alert('У продавця немає юзернейму Telegram!');
         tg?.openTelegramLink(`https://t.me/${username}`);
       }
 
@@ -175,6 +184,17 @@
         const text = `Подивіться товар: ${prod.title} за ${prod.price_uah} ₴ в OLX Mini App!`;
         tg?.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(text)}`);
       }
+
+      // Фільтрація та сортування
+      const filteredProducts = products.filter(prod => {
+        const matchesCategory = selectedCategory ? prod.category_id === selectedCategory : true;
+        const matchesSearch = prod.title.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+      }).sort((a, b) => {
+        if (sortOption === 'price_asc') return a.price_uah - b.price_uah;
+        if (sortOption === 'price_desc') return b.price_uah - a.price_uah;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
 
       const myProducts = products.filter(p => p.users?.telegram_id === currentUser.id);
 
@@ -192,12 +212,34 @@
               </span>
             </header>
 
-            {/* Catalog */}
+            {/* Catalog Tab */}
             {tab === 'catalog' && (
               <main class="p-4">
+                {/* Search & Sort Input */}
+                <div class="space-y-2 mb-3">
+                  <input
+                    type="text"
+                    placeholder="🔍 Пошук оголошень..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    class="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
+                  />
+                  
+                  <select
+                    value={sortOption}
+                    onChange={e => setSortOption(e.target.value)}
+                    class="w-full border border-gray-300 rounded-xl p-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
+                  >
+                    <option value="newest">⏱ Спочатку нові</option>
+                    <option value="price_asc">📉 Від дешевших до дорожчих</option>
+                    <option value="price_desc">📈 Від дорожчих до дешевших</option>
+                  </select>
+                </div>
+
+                {/* Categories */}
                 <div class="flex gap-2 overflow-x-auto pb-3 mb-3 no-scrollbar">
                   <button
-                    onClick={() => handleCategorySelect(null)}
+                    onClick={() => setSelectedCategory(null)}
                     class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                       selectedCategory === null ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'
                     }`}
@@ -207,7 +249,7 @@
                   {categories.map(cat => (
                     <button
                       key={cat.id}
-                      onClick={() => handleCategorySelect(cat.id)}
+                      onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
                       class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                         selectedCategory === cat.id ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'
                       }`}
@@ -217,17 +259,17 @@
                   ))}
                 </div>
 
+                {/* Grid Products */}
                 {loading ? (
-                  <div class="text-center py-16 text-[#23e5bf] font-medium">Завантаження оголошень...</div>
-                ) : products.length === 0 ? (
+                  <div class="text-center py-16 text-[#23e5bf] font-medium">Завантаження...</div>
+                ) : filteredProducts.length === 0 ? (
                   <div class="text-center py-16 text-gray-300 bg-[#00383e] rounded-2xl border border-[#104b50] p-6">
                     <p class="text-3xl mb-2">📦</p>
-                    <p class="font-bold text-white">Оголошень поки немає</p>
-                    <p class="text-xs text-gray-400 mt-1">Опублікуйте першу пропозицію!</p>
+                    <p class="font-bold text-white">Оголошень не знайдено</p>
                   </div>
                 ) : (
                   <div class="grid grid-cols-2 gap-3">
-                    {products.map(prod => (
+                    {filteredProducts.map(prod => (
                       <div
                         key={prod.id}
                         onClick={() => setSelectedProduct(prod)}
@@ -235,9 +277,11 @@
                       >
                         <div>
                           {prod.image_url ? (
-                            <img src={prod.image_url} alt={prod.title} class="w-full h-28 object-cover rounded-lg mb-2" />
+                            <div class="w-full h-44 bg-gray-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                              <img src={prod.image_url} alt={prod.title} class="max-h-full max-w-full object-contain" />
+                            </div>
                           ) : (
-                            <div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
+                            <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">
                               🖼️
                             </div>
                           )}
@@ -245,13 +289,10 @@
                             {prod.categories?.title || 'Товар'}
                           </span>
                           <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 mt-1 leading-snug">{prod.title}</h3>
-                          {prod.description && (
-                            <p class="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{prod.description}</p>
-                          )}
                         </div>
                         <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
                           <span class="text-sm font-black text-[#002f34]">{prod.price_uah} ₴</span>
-                          <span class="text-xs text-blue-600 font-bold">Детальніше ➔</span>
+                          <span class="text-xs text-blue-600 font-bold">➔</span>
                         </div>
                       </div>
                     ))}
@@ -260,7 +301,7 @@
               </main>
             )}
 
-            {/* Form */}
+            {/* Add Tab */}
             {tab === 'add' && (
               <main class="p-4">
                 <div class="bg-[#00383e] p-5 rounded-2xl border border-[#104b50] shadow-lg">
@@ -273,14 +314,14 @@
                       <input
                         type="text"
                         required
-                        placeholder="напр. Навушники AirPods Pro"
+                        placeholder="напр. Кросівки Nike Air Max"
                         value={title}
                         onChange={e => setTitle(e.target.value)}
                         class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Ціна (в гривнях ₴) *</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Ціна (₴) *</label>
                       <input
                         type="number"
                         required
@@ -292,16 +333,19 @@
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару (до 5 шт.)</label>
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={handleFileChange}
+                        multiple
+                        onChange={handleFilesChange}
                         class="w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#23e5bf] file:text-[#002f34]"
                       />
-                      {imagePreview && (
-                        <div class="mt-2">
-                          <img src={imagePreview} alt="Прев'ю" class="w-full h-32 object-cover rounded-xl border border-[#104b50]" />
+                      {imagePreviews.length > 0 && (
+                        <div class="flex gap-2 overflow-x-auto mt-2 no-scrollbar">
+                          {imagePreviews.map((src, i) => (
+                            <img key={i} src={src} class="w-20 h-28 object-contain bg-black/20 rounded-lg border border-[#104b50]" />
+                          ))}
                         </div>
                       )}
                     </div>
@@ -319,10 +363,10 @@
                       </select>
                     </div>
                     <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Опис товару</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Опис</label>
                       <textarea
                         rows="3"
-                        placeholder="Розкажіть про стан товару..."
+                        placeholder="Детальний опис товару..."
                         value={description}
                         onChange={e => setDescription(e.target.value)}
                         class="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#23e5bf]"
@@ -333,7 +377,7 @@
                       disabled={isSubmitting}
                       class="w-full bg-[#23e5bf] text-[#002f34] font-black py-3 rounded-xl shadow-md hover:bg-[#1fd6b2] active:scale-[0.99] transition disabled:opacity-50"
                     >
-                      {isSubmitting ? 'Публікація...' : 'Опублікувати оголошення'}
+                      {isSubmitting ? 'Завантаження...' : 'Опублікувати оголошення'}
                     </button>
                   </form>
                 </div>
@@ -347,7 +391,7 @@
                   <h2 class="text-base font-bold text-white flex items-center gap-2">
                     <span>👤</span> Особистий кабінет
                   </h2>
-                  <p class="text-xs text-gray-300 mt-1">Усього ваших оголошень: <b>{myProducts.length}</b></p>
+                  <p class="text-xs text-gray-300 mt-1">Всього у вас оголошень: <b>{myProducts.length}</b></p>
                 </div>
 
                 <h3 class="text-xs uppercase font-bold text-gray-400 mb-2">Ваші публікації:</h3>
@@ -373,7 +417,7 @@
                         </div>
                         <button
                           onClick={() => handleDeleteProduct(prod.id)}
-                          class="bg-red-50 text-red-600 p-2 rounded-lg text-sm font-bold active:scale-95 transition"
+                          class="bg-red-50 text-red-600 p-2.5 rounded-lg text-sm font-bold active:scale-95 transition"
                           title="Видалити"
                         >
                           🗑️
@@ -386,24 +430,40 @@
             )}
           </div>
 
-          {/* Modal / Detailed View */}
+          {/* Modal / Detailed View with Full-Size Carousel */}
           {selectedProduct && (
             <div class="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
               <div class="bg-white text-[#002f34] w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 relative">
                 <button
                   onClick={() => setSelectedProduct(null)}
-                  class="absolute top-4 right-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center"
+                  class="absolute top-4 right-4 bg-gray-200 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center z-10"
                 >
                   ✕
                 </button>
 
-                {selectedProduct.image_url ? (
-                  <img src={selectedProduct.image_url} alt={selectedProduct.title} class="w-full h-56 object-cover rounded-2xl mb-4" />
-                ) : (
-                  <div class="w-full h-44 bg-gray-100 rounded-2xl mb-4 flex items-center justify-center text-gray-400 text-4xl">
-                    🖼️
-                  </div>
-                )}
+                {/* Horizontal Swipe Gallery with Full Height Images */}
+                <div class="w-full mb-4">
+                  {selectedProduct.product_images && selectedProduct.product_images.length > 0 ? (
+                    <div class="flex gap-2 overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-2xl bg-gray-900 h-80">
+                      {selectedProduct.product_images.map((img, idx) => (
+                        <div key={idx} class="snap-center flex-shrink-0 w-full h-full flex items-center justify-center bg-gray-900">
+                          <img src={img.image_url} class="max-h-full max-w-full object-contain" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : selectedProduct.image_url ? (
+                    <div class="w-full h-80 bg-gray-900 rounded-2xl flex items-center justify-center">
+                      <img src={selectedProduct.image_url} class="max-h-full max-w-full object-contain rounded-2xl" />
+                    </div>
+                  ) : (
+                    <div class="w-full h-44 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 text-4xl">
+                      🖼️
+                    </div>
+                  )}
+                  {selectedProduct.product_images && selectedProduct.product_images.length > 1 && (
+                    <p class="text-[10px] text-gray-400 text-center mt-1 font-bold">👉 Гортайте вбік щоб побачити всі фото</p>
+                  )}
+                </div>
 
                 <span class="text-xs uppercase font-black text-[#002f34] bg-[#23e5bf] px-2 py-0.5 rounded-md">
                   {selectedProduct.categories?.title || 'Товар'}
