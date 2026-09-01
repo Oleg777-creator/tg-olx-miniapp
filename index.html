@@ -19,7 +19,6 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     
-    /* Жорстке фіксування стилів вводу */
     input, textarea, select {
       color: #002f34 !important;
       -webkit-text-fill-color: #002f34 !important;
@@ -47,7 +46,9 @@
       const [categories, setCategories] = React.useState([]);
       const [selectedCategory, setSelectedCategory] = React.useState(null);
       const [loading, setLoading] = React.useState(true);
-      const [tab, setTab] = React.useState('catalog');
+      const [tab, setTab] = React.useState('catalog'); // 'catalog', 'add', 'profile'
+
+      const [selectedProduct, setSelectedProduct] = React.useState(null);
 
       const [title, setTitle] = React.useState('');
       const [price, setPrice] = React.useState('');
@@ -56,6 +57,8 @@
       const [imageFile, setImageFile] = React.useState(null);
       const [imagePreview, setImagePreview] = React.useState(null);
       const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+      const currentUser = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user', first_name: 'Гість' };
 
       React.useEffect(() => {
         tg?.ready();
@@ -71,7 +74,7 @@
 
       async function fetchProducts(catId = null) {
         setLoading(true);
-        let query = supabaseClient.from('products').select('*, categories(title), users(username)').eq('status', 'active').order('created_at', { ascending: false });
+        let query = supabaseClient.from('products').select('*, categories(title), users!inner(telegram_id, username)').eq('status', 'active').order('created_at', { ascending: false });
         if (catId) query = query.eq('category_id', catId);
         
         const { data, error } = await query;
@@ -98,15 +101,14 @@
         if (!title || !price) return alert('Будь ласка, вкажіть назву та ціну товару!');
         
         setIsSubmitting(true);
-        const user = tg?.initDataUnsafe?.user || { id: 9999999, username: 'telegram_user' };
 
         try {
-          let { data: dbUser } = await supabaseClient.from('users').select('id').eq('telegram_id', user.id).maybeSingle();
+          let { data: dbUser } = await supabaseClient.from('users').select('id').eq('telegram_id', currentUser.id).maybeSingle();
           
           if (!dbUser) {
             const { data: newUser, error: userErr } = await supabaseClient.from('users').insert([{
-              telegram_id: user.id,
-              username: user.username || `user_${user.id}`
+              telegram_id: currentUser.id,
+              username: currentUser.username || `user_${currentUser.id}`
             }]).select().single();
             if (userErr) throw userErr;
             dbUser = newUser;
@@ -153,10 +155,28 @@
         }
       }
 
+      async function handleDeleteProduct(id) {
+        if (!confirm('Ви дійсно хочете видалити це оголошення?')) return;
+        const { error } = await supabaseClient.from('products').delete().eq('id', id);
+        if (!error) {
+          alert('Оголошення видалено!');
+          fetchProducts();
+        } else {
+          alert('Помилка видалення: ' + error.message);
+        }
+      }
+
       function openSellerChat(username) {
         if (!username) return alert('У продавця немає юзернейму в Telegram!');
         tg?.openTelegramLink(`https://t.me/${username}`);
       }
+
+      function shareProduct(prod) {
+        const text = `Подивіться товар: ${prod.title} за ${prod.price_uah} ₴ в OLX Mini App!`;
+        tg?.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(text)}`);
+      }
+
+      const myProducts = products.filter(p => p.users?.telegram_id === currentUser.id);
 
       return (
         <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-[#002f34] text-white">
@@ -168,7 +188,7 @@
                 <span class="text-xs bg-[#104b50] text-[#23e5bf] font-bold px-2 py-0.5 rounded">UA</span>
               </div>
               <span class="text-xs bg-[#104b50] text-gray-200 font-medium px-2.5 py-1 rounded-full border border-[#1b646a]">
-                👤 {tg?.initDataUnsafe?.user?.first_name || 'Користувач'}
+                👤 {currentUser.first_name}
               </span>
             </header>
 
@@ -208,7 +228,11 @@
                 ) : (
                   <div class="grid grid-cols-2 gap-3">
                     {products.map(prod => (
-                      <div key={prod.id} class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md">
+                      <div
+                        key={prod.id}
+                        onClick={() => setSelectedProduct(prod)}
+                        class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer active:scale-[0.98] transition"
+                      >
                         <div>
                           {prod.image_url ? (
                             <img src={prod.image_url} alt={prod.title} class="w-full h-28 object-cover rounded-lg mb-2" />
@@ -225,14 +249,9 @@
                             <p class="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{prod.description}</p>
                           )}
                         </div>
-                        <div class="mt-2 pt-2 border-t border-gray-100">
-                          <div class="text-sm font-black text-[#002f34] mb-1.5">{prod.price_uah} ₴</div>
-                          <button
-                            onClick={() => openSellerChat(prod.users?.username)}
-                            class="w-full bg-[#002f34] text-[#23e5bf] font-bold text-[11px] py-1.5 rounded-lg flex items-center justify-center gap-1 active:scale-95 transition"
-                          >
-                            <span>💬</span> Написати
-                          </button>
+                        <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
+                          <span class="text-sm font-black text-[#002f34]">{prod.price_uah} ₴</span>
+                          <span class="text-xs text-blue-600 font-bold">Детальніше ➔</span>
                         </div>
                       </div>
                     ))}
@@ -320,7 +339,103 @@
                 </div>
               </main>
             )}
+
+            {/* Profile Tab */}
+            {tab === 'profile' && (
+              <main class="p-4">
+                <div class="bg-[#00383e] p-4 rounded-2xl border border-[#104b50] mb-4">
+                  <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <span>👤</span> Особистий кабінет
+                  </h2>
+                  <p class="text-xs text-gray-300 mt-1">Усього ваших оголошень: <b>{myProducts.length}</b></p>
+                </div>
+
+                <h3 class="text-xs uppercase font-bold text-gray-400 mb-2">Ваші публікації:</h3>
+
+                {myProducts.length === 0 ? (
+                  <div class="text-center py-8 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
+                    <p class="text-sm">Ви ще не опублікували жодного товару</p>
+                  </div>
+                ) : (
+                  <div class="space-y-3">
+                    {myProducts.map(prod => (
+                      <div key={prod.id} class="bg-white p-3 rounded-xl text-[#002f34] flex gap-3 items-center justify-between shadow-sm">
+                        <div class="flex gap-3 items-center overflow-hidden">
+                          {prod.image_url ? (
+                            <img src={prod.image_url} alt={prod.title} class="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
+                          ) : (
+                            <div class="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🖼️</div>
+                          )}
+                          <div class="truncate">
+                            <h4 class="font-bold text-xs truncate">{prod.title}</h4>
+                            <p class="text-xs font-black text-[#002f34] mt-0.5">{prod.price_uah} ₴</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteProduct(prod.id)}
+                          class="bg-red-50 text-red-600 p-2 rounded-lg text-sm font-bold active:scale-95 transition"
+                          title="Видалити"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </main>
+            )}
           </div>
+
+          {/* Modal / Detailed View */}
+          {selectedProduct && (
+            <div class="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div class="bg-white text-[#002f34] w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 relative">
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  class="absolute top-4 right-4 bg-gray-100 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center"
+                >
+                  ✕
+                </button>
+
+                {selectedProduct.image_url ? (
+                  <img src={selectedProduct.image_url} alt={selectedProduct.title} class="w-full h-56 object-cover rounded-2xl mb-4" />
+                ) : (
+                  <div class="w-full h-44 bg-gray-100 rounded-2xl mb-4 flex items-center justify-center text-gray-400 text-4xl">
+                    🖼️
+                  </div>
+                )}
+
+                <span class="text-xs uppercase font-black text-[#002f34] bg-[#23e5bf] px-2 py-0.5 rounded-md">
+                  {selectedProduct.categories?.title || 'Товар'}
+                </span>
+
+                <h2 class="text-xl font-black mt-2 leading-tight">{selectedProduct.title}</h2>
+                <div class="text-2xl font-black text-[#002f34] my-2">{selectedProduct.price_uah} ₴</div>
+
+                {selectedProduct.description && (
+                  <div class="my-4 border-t pt-3 border-gray-100">
+                    <h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Опис:</h4>
+                    <p class="text-xs text-gray-700 whitespace-pre-line leading-relaxed">{selectedProduct.description}</p>
+                  </div>
+                )}
+
+                <div class="flex gap-2 mt-5">
+                  <button
+                    onClick={() => openSellerChat(selectedProduct.users?.username)}
+                    class="flex-1 bg-[#002f34] text-[#23e5bf] font-black py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+                  >
+                    <span>💬</span> Написати продавцю
+                  </button>
+                  <button
+                    onClick={() => shareProduct(selectedProduct)}
+                    class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition"
+                  >
+                    🔗
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bottom Nav */}
           <nav class="fixed bottom-0 left-0 right-0 bg-[#002f34] border-t border-[#104b50] flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
@@ -337,6 +452,13 @@
             >
               <span class="text-base mb-0.5">➕</span>
               <span>Подати</span>
+            </button>
+            <button
+              onClick={() => setTab('profile')}
+              class={`flex flex-col items-center text-xs font-bold transition ${tab === 'profile' ? 'text-[#23e5bf]' : 'text-gray-400'}`}
+            >
+              <span class="text-base mb-0.5">👤</span>
+              <span>Профіль</span>
             </button>
           </nav>
         </div>
