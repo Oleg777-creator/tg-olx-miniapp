@@ -120,6 +120,7 @@
         const { data, error } = await supabaseClient
           .from('products')
           .select('*, categories(title), users(id, telegram_id, username), product_images(image_url)')
+          .order('boosted_until', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false });
 
         if (!error && data) setProducts(data);
@@ -160,32 +161,38 @@
         }
       }
 
+      const [existingImageUrls, setExistingImageUrls] = React.useState([]);
+
       function handleFilesAdd(e) {
-        const selected = Array.from(e.target.files);
-        if (imageFiles.length + selected.length > 5) {
+        const selected = Array.from(e.target.files || []);
+        if (existingImageUrls.length + imageFiles.length + selected.length > 5) {
           alert('Максимум 5 фотографій!');
           return;
         }
-        const newFiles = [...imageFiles, ...selected];
-        setImageFiles(newFiles);
-        setImagePreviews(newFiles.map(file => URL.createObjectURL(file)));
+        setImageFiles(prev => [...prev, ...selected]);
+        setImagePreviews(prev => [...prev, ...selected.map(file => URL.createObjectURL(file))]);
+        e.target.value = '';
       }
 
-      function removeImage(index) {
-        const newFiles = imageFiles.filter((_, i) => i !== index);
-        setImageFiles(newFiles);
-        setImagePreviews(newFiles.map(file => URL.createObjectURL(file)));
+      function removeImage(index, existing = false) {
+        if (existing) setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
+        else {
+          setImageFiles(prev => prev.filter((_, i) => i !== index));
+          setImagePreviews(prev => prev.filter((_, i) => i !== index));
+        }
       }
 
       function startEditing(prod) {
+        const urls = (prod.product_images || []).map(x => x.image_url);
         setEditingProductId(prod.id);
-        setTitle(prod.title);
-        setPrice(prod.price_uah);
+        setTitle(prod.title || '');
+        setPrice(prod.price_uah ?? '');
         setCondition(prod.condition || 'used');
         setDescription(prod.description || '');
         setCategoryId(prod.category_id || '');
         setImageFiles([]);
-        setImagePreviews(prod.image_url ? [prod.image_url] : []);
+        setImagePreviews([]);
+        setExistingImageUrls(urls.length ? urls.slice(0, 5) : (prod.image_url ? [prod.image_url] : []));
         setTab('add');
       }
 
@@ -198,64 +205,74 @@
         setCategoryId('');
         setImageFiles([]);
         setImagePreviews([]);
+        setExistingImageUrls([]);
       }
 
       async function handleSaveProduct(e) {
         e.preventDefault();
-        if (!title || !price) return alert('Будь ласка, вкажіть назву та ціну!');
+        if (!title.trim() || !price) return alert('Будь ласка, вкажіть назву та ціну!');
+        if (!currentDbUser) return alert('Користувача ще не завантажено.');
         setIsSubmitting(true);
 
         try {
           let uploadedUrls = [];
-          for (let file of imageFiles) {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const { error: uploadErr } = await supabaseClient.storage.from('product-images').upload(fileName, file);
-            if (!uploadErr) {
-              const { data: publicUrlData } = supabaseClient.storage.from('product-images').getPublicUrl(fileName);
-              uploadedUrls.push(publicUrlData.publicUrl);
-            }
+          for (const file of imageFiles) {
+            const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+            const fileName = `${currentUser.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+            const { error } = await supabaseClient.storage.from('product-images').upload(fileName, file);
+            if (error) throw error;
+            const { data } = supabaseClient.storage.from('product-images').getPublicUrl(fileName);
+            uploadedUrls.push(data.publicUrl);
           }
 
-          const mainImage = uploadedUrls.length > 0 ? uploadedUrls[0] : (imagePreviews[0] || null);
+          const finalImages = [...existingImageUrls, ...uploadedUrls].slice(0, 5);
+          const mainImage = finalImages[0] || null;
 
           if (editingProductId) {
-            const { error: updateErr } = await supabaseClient.from('products').update({
-              title,
+            const { error } = await supabaseClient.from('products').update({
+              title: title.trim(),
               price_uah: parseFloat(price),
               condition,
-              description,
+              description: description.trim(),
               category_id: categoryId ? parseInt(categoryId) : null,
               image_url: mainImage
-            }).eq('id', editingProductId);
+            }).eq('id', editingProductId).eq('user_id', currentDbUser.id);
+            if (error) throw error;
 
-            if (updateErr) throw updateErr;
+            await supabaseClient.from('product_images').delete().eq('product_id', editingProductId);
+            if (finalImages.length) {
+              const { error: galleryError } = await supabaseClient.from('product_images').insert(
+                finalImages.map(url => ({ product_id: editingProductId, image_url: url }))
+              );
+              if (galleryError) throw galleryError;
+            }
             alert('✏️ Оголошення успішно оновлено!');
           } else {
-            const { data: newProduct, error: prodErr } = await supabaseClient.from('products').insert([{
+            const { data: newProduct, error } = await supabaseClient.from('products').insert([{
               user_id: currentDbUser.id,
-              title,
+              title: title.trim(),
               price_uah: parseFloat(price),
               condition,
-              description,
+              description: description.trim(),
               category_id: categoryId ? parseInt(categoryId) : null,
               image_url: mainImage
             }]).select().single();
+            if (error) throw error;
 
-            if (prodErr) throw prodErr;
-
-            if (uploadedUrls.length > 0 && newProduct) {
-              const galleryData = uploadedUrls.map(url => ({ product_id: newProduct.id, image_url: url }));
-              await supabaseClient.from('product_images').insert(galleryData);
+            if (finalImages.length) {
+              const { error: galleryError } = await supabaseClient.from('product_images').insert(
+                finalImages.map(url => ({ product_id: newProduct.id, image_url: url }))
+              );
+              if (galleryError) throw galleryError;
             }
             alert('🎉 Оголошення опубліковано!');
           }
 
           resetForm();
           setTab('catalog');
-          fetchProducts();
+          await fetchProducts();
         } catch (err) {
-          alert('Помилка збереження: ' + err.message);
+          alert('Помилка збереження: ' + (err?.message || err));
         } finally {
           setIsSubmitting(false);
         }
@@ -280,31 +297,44 @@
         }
       }
 
+      async function waitForBoost(productId, attempts = 8) {
+        for (let i = 0; i < attempts; i++) {
+          const { data } = await supabaseClient
+            .from('products')
+            .select('boosted_until')
+            .eq('id', productId)
+            .maybeSingle();
+          if (data?.boosted_until && new Date(data.boosted_until) > new Date()) return true;
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+        return false;
+      }
+
       async function boostProduct(prod) {
-        if (!prod?.id || prod.is_sold) return;
+        if (!prod?.id || prod.is_sold || !currentDbUser) return;
         setBoostingProductId(prod.id);
         try {
           const { data, error } = await supabaseClient.functions.invoke('create-telegram-invoice', {
-            body: { productId: prod.id, stars: 50, title: 'Підняти оголошення в топ', description: 'Закріплення товару на перших позиціях на 3 дні' }
+            body: { productId: prod.id, telegramUserId: currentUser.id }
           });
-
           if (error || !data?.invoiceLink) {
-            alert('Помилка створення рахунку: ' + (error?.message || 'Невідома помилка'));
+            alert('Помилка створення рахунку: ' + (error?.message || data?.error || 'Невідома помилка'));
             return;
           }
-
           if (window.Telegram?.WebApp) {
             window.Telegram.WebApp.openInvoice(data.invoiceLink, async (status) => {
               if (status === 'paid') {
-                alert('Оплата успішна! Ваше оголошення піднято в топ 🚀');
+                const activated = await waitForBoost(prod.id);
+                alert(activated ? '⭐ Оплата успішна! Оголошення піднято в TOP на 3 дні.' : '⭐ Оплата пройшла. TOP активується протягом кількох секунд.');
                 await fetchProducts();
-              }
+              } else if (status === 'cancelled') alert('Оплату скасовано.');
+              else if (status === 'failed') alert('Оплата не пройшла.');
             });
           } else {
             window.open(data.invoiceLink, '_blank');
           }
         } catch (err) {
-          alert('Сталася помилка при спробі оплати.');
+          alert('Сталася помилка: ' + (err?.message || err));
         } finally {
           setBoostingProductId(null);
         }
@@ -349,6 +379,9 @@
         const matchesCondition = conditionFilter === 'all' ? true : prod.condition === conditionFilter;
         return matchesCategory && matchesSearch && matchesMinPrice && matchesMaxPrice && matchesCondition;
       }).sort((a, b) => {
+        const aTop = a.boosted_until && new Date(a.boosted_until) > new Date();
+        const bTop = b.boosted_until && new Date(b.boosted_until) > new Date();
+        if (aTop !== bTop) return aTop ? -1 : 1;
         if (sortOption === 'price_asc') return a.price_uah - b.price_uah;
         if (sortOption === 'price_desc') return b.price_uah - a.price_uah;
         return new Date(b.created_at) - new Date(a.created_at);
@@ -428,6 +461,7 @@
                         <div key={prod.id} onClick={() => openProductDetails(prod)} class={`bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer active:scale-[0.98] transition relative ${prod.is_sold ? 'opacity-60' : ''}`}>
                           <button onClick={e => toggleFavorite(prod, e)} class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow">{isFav ? '❤️' : '🤍'}</button>
                           {prod.is_sold && <span class="absolute top-4 left-4 z-10 bg-red-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">ПРОДАНО</span>}
+                          {!prod.is_sold && prod.boosted_until && new Date(prod.boosted_until) > new Date() && <span class="absolute top-4 left-4 z-10 bg-amber-400 text-[#002f34] text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">⭐ ТОП</span>}
                           <div>
                             {prod.image_url ? (
                               <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
@@ -481,15 +515,21 @@
                       </select>
                     </div>
                     <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару ({imageFiles.length + (editingProductId ? 1 : 0)}/5)</label>
+                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару ({existingImageUrls.length + imageFiles.length}/5)</label>
                       <div class="flex gap-2 overflow-x-auto py-1 no-scrollbar items-center">
+                        {existingImageUrls.map((src, i) => (
+                          <div key={'old-' + i} class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center">
+                            <img src={src} class="max-h-full max-w-full object-contain" />
+                            <button type="button" onClick={() => removeImage(i, true)} class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center">✕</button>
+                          </div>
+                        ))}
                         {imagePreviews.map((src, i) => (
-                          <div key={i} class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center">
+                          <div key={'new-' + i} class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center">
                             <img src={src} class="max-h-full max-w-full object-contain" />
                             <button type="button" onClick={() => removeImage(i)} class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center">✕</button>
                           </div>
                         ))}
-                        {imageFiles.length < 5 && (
+                        {existingImageUrls.length + imageFiles.length < 5 && (
                           <label class="flex-shrink-0 w-20 h-28 border-2 border-dashed border-[#23e5bf] rounded-xl flex flex-col items-center justify-center cursor-pointer bg-[#00474e]">
                             <span class="text-2xl text-[#23e5bf]">+</span>
                             <span class="text-[10px] font-bold text-gray-200 mt-1">Додати</span>
