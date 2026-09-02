@@ -2,8 +2,12 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Telegram OLX Mini App</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  >
+
+  <title>OLX Mini App</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -13,190 +17,826 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    body {
-      background-color: #002f34;
-      color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    * {
+      box-sizing: border-box;
     }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    input, textarea, select {
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: #002f34;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+    }
+
+    body {
+      color: white;
+      padding-bottom: 85px;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    input,
+    textarea,
+    select {
       color: #002f34 !important;
       -webkit-text-fill-color: #002f34 !important;
       background-color: #ffffff !important;
       opacity: 1 !important;
     }
-    input::placeholder, textarea::placeholder {
+
+    input::placeholder,
+    textarea::placeholder {
       color: #64748b !important;
       -webkit-text-fill-color: #64748b !important;
+    }
+
+    button {
+      -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>
 
-<body class="pb-20">
+<body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const SUPABASE_URL = 'https://dhjrvpnbeapybgomwelc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaHJ2cG5iZWFweWJnb213ZWxjIiwicmVmIjoiZGhqcnZwbmJlYXB5YmdvbXdlbGMiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4ODIwOTU3MywiZXhwIjoyMTAzNzg1NTczfQ.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SUPABASE_URL =
+      'https://dhjrvpnbeapybgomwelc.supabase.co';
+
+    const SUPABASE_ANON_KEY =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaHJ2cG5iZWFweWJnb213ZWxjIiwicmVmIjoiZGhqcnZwbmJlYXB5YmdvbXdlbGMiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4ODIwOTU3MywiZXhwIjoyMTAzNzg1NTczfQ.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
+
+    const supabaseClient =
+      supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY
+      );
+
     const tg = window.Telegram?.WebApp;
 
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function getErrorText(error) {
+      if (!error) return 'Невідома помилка';
+
+      return [
+        error.message,
+        error.details,
+        error.hint,
+        error.code
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
     function App() {
-      const [products, setProducts] = React.useState([]);
-      const [categories, setCategories] = React.useState([]);
-      const [selectedCategory, setSelectedCategory] = React.useState(null);
 
-      const [searchQuery, setSearchQuery] = React.useState('');
-      const [minPrice, setMinPrice] = React.useState('');
-      const [maxPrice, setMaxPrice] = React.useState('');
-      const [conditionFilter, setConditionFilter] = React.useState('all');
-      const [sortOption, setSortOption] = React.useState('newest');
-      const [showFilters, setShowFilters] = React.useState(false);
+      const [products, setProducts] =
+        React.useState([]);
 
-      const [loading, setLoading] = React.useState(true);
-      const [tab, setTab] = React.useState('catalog');
-      const [favoriteIds, setFavoriteIds] = React.useState([]);
-      const [selectedProduct, setSelectedProduct] = React.useState(null);
+      const [categories, setCategories] =
+        React.useState([]);
 
-      const [editingProductId, setEditingProductId] = React.useState(null);
-      const [title, setTitle] = React.useState('');
-      const [price, setPrice] = React.useState('');
-      const [condition, setCondition] = React.useState('used');
-      const [description, setDescription] = React.useState('');
-      const [categoryId, setCategoryId] = React.useState('');
-      const [imageFiles, setImageFiles] = React.useState([]);
-      const [imagePreviews, setImagePreviews] = React.useState([]);
-      const [isSubmitting, setIsSubmitting] = React.useState(false);
-      const [currentDbUser, setCurrentDbUser] = React.useState(null);
+      const [categoriesError, setCategoriesError] =
+        React.useState('');
 
-      const [sellerReviews, setSellerReviews] = React.useState([]);
-      const [newRating, setNewRating] = React.useState(5);
-      const [newReviewComment, setNewReviewComment] = React.useState('');
-      const [boostingProductId, setBoostingProductId] = React.useState(null);
+      const [selectedCategory, setSelectedCategory] =
+        React.useState(null);
 
-      const currentUser = tg?.initDataUnsafe?.user || {
-        id: 9999999,
-        username: 'telegram_user',
-        first_name: 'Користувач'
-      };
+      const [searchQuery, setSearchQuery] =
+        React.useState('');
+
+      const [minPrice, setMinPrice] =
+        React.useState('');
+
+      const [maxPrice, setMaxPrice] =
+        React.useState('');
+
+      const [conditionFilter, setConditionFilter] =
+        React.useState('all');
+
+      const [sortOption, setSortOption] =
+        React.useState('newest');
+
+      const [showFilters, setShowFilters] =
+        React.useState(false);
+
+      const [loading, setLoading] =
+        React.useState(true);
+
+      const [initializing, setInitializing] =
+        React.useState(true);
+
+      const [tab, setTab] =
+        React.useState('catalog');
+
+      const [favoriteIds, setFavoriteIds] =
+        React.useState([]);
+
+      const [selectedProduct, setSelectedProduct] =
+        React.useState(null);
+
+      const [currentDbUser, setCurrentDbUser] =
+        React.useState(null);
+
+      const [userError, setUserError] =
+        React.useState('');
+
+      const [editingProductId, setEditingProductId] =
+        React.useState(null);
+
+      const [title, setTitle] =
+        React.useState('');
+
+      const [price, setPrice] =
+        React.useState('');
+
+      const [condition, setCondition] =
+        React.useState('used');
+
+      const [description, setDescription] =
+        React.useState('');
+
+      const [categoryId, setCategoryId] =
+        React.useState('');
+
+      const [imageFiles, setImageFiles] =
+        React.useState([]);
+
+      const [imagePreviews, setImagePreviews] =
+        React.useState([]);
+
+      const [existingImageUrls, setExistingImageUrls] =
+        React.useState([]);
+
+      const [isSubmitting, setIsSubmitting] =
+        React.useState(false);
+
+      const [sellerReviews, setSellerReviews] =
+        React.useState([]);
+
+      const [newRating, setNewRating] =
+        React.useState(5);
+
+      const [newReviewComment, setNewReviewComment] =
+        React.useState('');
+
+      const [boostingProductId, setBoostingProductId] =
+        React.useState(null);
+
+
+      const currentUser =
+        tg?.initDataUnsafe?.user || {
+          id: 9999999,
+          username: 'demo_user',
+          first_name: 'Користувач'
+        };
+
 
       React.useEffect(() => {
-        tg?.ready();
-        tg?.expand();
-        initUserAndData();
-      }, []);
 
-      async function initUserAndData() {
-        fetchCategories();
-        let { data: dbUser } = await supabaseClient
-          .from('users')
-          .select('*')
-          .eq('telegram_id', currentUser.id)
-          .maybeSingle();
-
-        if (!dbUser) {
-          const { data: newUser } = await supabaseClient
-            .from('users')
-            .insert([{ telegram_id: currentUser.id, username: currentUser.username || `user_${currentUser.id}` }])
-            .select()
-            .single();
-          dbUser = newUser;
+        try {
+          tg?.ready();
+          tg?.expand();
+        } catch (e) {
+          console.log(e);
         }
 
-        setCurrentDbUser(dbUser);
-        if (dbUser) fetchFavorites(dbUser.id);
-        fetchProducts();
+        initApp();
+
+      }, []);
+
+
+      async function initApp() {
+
+        setInitializing(true);
+        setLoading(true);
+        setUserError('');
+
+        try {
+
+          await fetchCategories();
+
+          const dbUser =
+            await ensureDatabaseUser();
+
+          if (!dbUser?.id) {
+
+            setUserError(
+              'Не вдалося завантажити профіль користувача.'
+            );
+
+            return;
+          }
+
+          setCurrentDbUser(dbUser);
+
+          await Promise.all([
+            fetchProducts(),
+            fetchFavorites(dbUser.id)
+          ]);
+
+        } catch (error) {
+
+          console.error(
+            'Помилка запуску:',
+            error
+          );
+
+          setUserError(
+            getErrorText(error)
+          );
+
+        } finally {
+
+          setLoading(false);
+          setInitializing(false);
+
+        }
       }
+
+
+      async function ensureDatabaseUser() {
+
+        const {
+          data: existingUser,
+          error: selectError
+        } =
+          await supabaseClient
+            .from('users')
+            .select('*')
+            .eq(
+              'telegram_id',
+              currentUser.id
+            )
+            .maybeSingle();
+
+
+        if (selectError) {
+
+          console.error(
+            'users SELECT:',
+            selectError
+          );
+
+          throw new Error(
+            'Не вдалося прочитати користувача:\n' +
+            getErrorText(selectError)
+          );
+        }
+
+
+        if (existingUser?.id) {
+
+          return existingUser;
+        }
+
+
+        const newUserData = {
+          telegram_id: currentUser.id,
+          username:
+            currentUser.username ||
+            `user_${currentUser.id}`,
+          first_name:
+            currentUser.first_name ||
+            'Користувач',
+          last_name:
+            currentUser.last_name ||
+            null,
+          photo_url:
+            currentUser.photo_url ||
+            null
+        };
+
+
+        const {
+          data: insertedUser,
+          error: insertError
+        } =
+          await supabaseClient
+            .from('users')
+            .insert([newUserData])
+            .select('*')
+            .single();
+
+
+        if (insertError) {
+
+          console.error(
+            'users INSERT:',
+            insertError
+          );
+
+          throw new Error(
+            'Не вдалося створити профіль:\n' +
+            getErrorText(insertError)
+          );
+        }
+
+
+        return insertedUser;
+      }
+
 
       async function fetchCategories() {
-        const { data } = await supabaseClient.from('categories').select('*').order('id', { ascending: true });
-        if (data) setCategories(data);
+
+        setCategoriesError('');
+
+        const {
+          data,
+          error
+        } =
+          await supabaseClient
+            .from('categories')
+            .select('id, title')
+            .order(
+              'id',
+              { ascending: true }
+            );
+
+
+        if (error) {
+
+          console.error(
+            'categories:',
+            error
+          );
+
+          setCategories([]);
+
+          setCategoriesError(
+            getErrorText(error)
+          );
+
+          return;
+        }
+
+
+        setCategories(
+          Array.isArray(data)
+            ? data
+            : []
+        );
       }
 
-      async function fetchProducts() {
-        setLoading(true);
-        const { data, error } = await supabaseClient
-          .from('products')
-          .select('*, categories(title), users(id, telegram_id, username), product_images(image_url)')
-          .order('boosted_until', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false });
 
-        if (!error && data) setProducts(data);
+      async function fetchProducts() {
+
+        setLoading(true);
+
+        const {
+          data,
+          error
+        } =
+          await supabaseClient
+            .from('products')
+            .select(`
+              *,
+              categories(title),
+              users(
+                id,
+                telegram_id,
+                username,
+                first_name
+              ),
+              product_images(
+                image_url
+              )
+            `)
+            .order(
+              'created_at',
+              { ascending: false }
+            );
+
+
+        if (error) {
+
+          console.error(
+            'products:',
+            error
+          );
+
+          alert(
+            'Помилка завантаження товарів:\n\n' +
+            getErrorText(error)
+          );
+
+          setLoading(false);
+
+          return;
+        }
+
+
+        setProducts(
+          data || []
+        );
+
         setLoading(false);
       }
 
+
       async function fetchFavorites(userId) {
-        const { data } = await supabaseClient.from('favorites').select('product_id').eq('user_id', userId);
-        if (data) setFavoriteIds(data.map(f => f.product_id));
-      }
-      async function openProductDetails(prod) {
-        setSelectedProduct(prod);
-        const newViews = (prod.views_count || 0) + 1;
-        await supabaseClient.from('products').update({ views_count: newViews }).eq('id', prod.id);
-        setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, views_count: newViews } : p));
 
-        if (prod.users?.id) {
-          const { data: revs } = await supabaseClient
-            .from('reviews')
-            .select('*')
-            .eq('seller_id', prod.users.id)
-            .order('created_at', { ascending: false });
-          if (revs) setSellerReviews(revs);
-        }
-      }
+        if (!userId) return;
 
-      async function toggleFavorite(prod, e) {
-        if (e) e.stopPropagation();
-        if (!currentDbUser) return;
-        const isFav = favoriteIds.includes(prod.id);
 
-        if (isFav) {
-          setFavoriteIds(favoriteIds.filter(id => id !== prod.id));
-          await supabaseClient.from('favorites').delete().eq('user_id', currentDbUser.id).eq('product_id', prod.id);
-        } else {
-          setFavoriteIds([...favoriteIds, prod.id]);
-          await supabaseClient.from('favorites').insert([{ user_id: currentDbUser.id, product_id: prod.id }]);
-        }
-      }
+        const {
+          data,
+          error
+        } =
+          await supabaseClient
+            .from('favorites')
+            .select('product_id')
+            .eq(
+              'user_id',
+              userId
+            );
 
-      const [existingImageUrls, setExistingImageUrls] = React.useState([]);
 
-      function handleFilesAdd(e) {
-        const selected = Array.from(e.target.files || []);
-        if (existingImageUrls.length + imageFiles.length + selected.length > 5) {
-          alert('Максимум 5 фотографій!');
+        if (error) {
+
+          console.error(
+            'favorites:',
+            error
+          );
+
           return;
         }
-        setImageFiles(prev => [...prev, ...selected]);
-        setImagePreviews(prev => [...prev, ...selected.map(file => URL.createObjectURL(file))]);
-        e.target.value = '';
+
+
+        setFavoriteIds(
+          (data || []).map(
+            row => row.product_id
+          )
+        );
       }
 
-      function removeImage(index, existing = false) {
-        if (existing) setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
-        else {
-          setImageFiles(prev => prev.filter((_, i) => i !== index));
-          setImagePreviews(prev => prev.filter((_, i) => i !== index));
+
+      async function openProductDetails(prod) {
+
+        setSelectedProduct(prod);
+        setSellerReviews([]);
+
+
+        try {
+
+          const newViews =
+            Number(
+              prod.views_count || 0
+            ) + 1;
+
+
+          const {
+            error
+          } =
+            await supabaseClient
+              .from('products')
+              .update({
+                views_count: newViews
+              })
+              .eq(
+                'id',
+                prod.id
+              );
+
+
+          if (!error) {
+
+            setProducts(prev =>
+              prev.map(item =>
+                item.id === prod.id
+                  ? {
+                      ...item,
+                      views_count: newViews
+                    }
+                  : item
+              )
+            );
+
+            setSelectedProduct(prev =>
+              prev
+                ? {
+                    ...prev,
+                    views_count: newViews
+                  }
+                : prev
+            );
+          }
+
+        } catch (e) {
+
+          console.log(
+            'views error:',
+            e
+          );
+        }
+
+
+        if (prod.users?.id) {
+
+          const {
+            data,
+            error
+          } =
+            await supabaseClient
+              .from('reviews')
+              .select('*')
+              .eq(
+                'seller_id',
+                prod.users.id
+              )
+              .order(
+                'created_at',
+                { ascending: false }
+              );
+
+
+          if (!error) {
+
+            setSellerReviews(
+              data || []
+            );
+
+          } else {
+
+            console.log(
+              'reviews:',
+              error
+            );
+          }
         }
       }
 
+
+      async function toggleFavorite(prod, event) {
+
+        event?.stopPropagation();
+
+        if (!currentDbUser?.id) {
+
+          alert(
+            'Профіль ще завантажується.'
+          );
+
+          return;
+        }
+
+
+        const isFavorite =
+          favoriteIds.includes(
+            prod.id
+          );
+
+
+        if (isFavorite) {
+
+          const {
+            error
+          } =
+            await supabaseClient
+              .from('favorites')
+              .delete()
+              .eq(
+                'user_id',
+                currentDbUser.id
+              )
+              .eq(
+                'product_id',
+                prod.id
+              );
+
+
+          if (error) {
+
+            alert(
+              'Не вдалося видалити з обраного:\n' +
+              getErrorText(error)
+            );
+
+            return;
+          }
+
+
+          setFavoriteIds(prev =>
+            prev.filter(
+              id => id !== prod.id
+            )
+          );
+
+        } else {
+
+          const {
+            error
+          } =
+            await supabaseClient
+              .from('favorites')
+              .insert([
+                {
+                  user_id:
+                    currentDbUser.id,
+                  product_id:
+                    prod.id
+                }
+              ]);
+
+
+          if (error) {
+
+            alert(
+              'Не вдалося додати в обране:\n' +
+              getErrorText(error)
+            );
+
+            return;
+          }
+
+
+          setFavoriteIds(prev =>
+            [...prev, prod.id]
+          );
+        }
+      }
+
+
+      function handleFilesAdd(event) {
+
+        const selected =
+          Array.from(
+            event.target.files || []
+          );
+
+
+        const total =
+          existingImageUrls.length +
+          imageFiles.length +
+          selected.length;
+
+
+        if (total > 5) {
+
+          alert(
+            'Максимум 5 фотографій.'
+          );
+
+          event.target.value = '';
+
+          return;
+        }
+
+
+        setImageFiles(prev =>
+          [
+            ...prev,
+            ...selected
+          ]
+        );
+
+
+        setImagePreviews(prev =>
+          [
+            ...prev,
+            ...selected.map(
+              file =>
+                URL.createObjectURL(
+                  file
+                )
+            )
+          ]
+        );
+
+
+        event.target.value = '';
+      }
+
+
+      function removeExistingImage(index) {
+
+        setExistingImageUrls(prev =>
+          prev.filter(
+            (_, i) => i !== index
+          )
+        );
+      }
+
+
+      function removeNewImage(index) {
+
+        const url =
+          imagePreviews[index];
+
+        if (url) {
+
+          try {
+            URL.revokeObjectURL(url);
+          } catch {}
+        }
+
+
+        setImageFiles(prev =>
+          prev.filter(
+            (_, i) => i !== index
+          )
+        );
+
+
+        setImagePreviews(prev =>
+          prev.filter(
+            (_, i) => i !== index
+          )
+        );
+      }
+
+
       function startEditing(prod) {
-        const urls = (prod.product_images || []).map(x => x.image_url);
-        setEditingProductId(prod.id);
-        setTitle(prod.title || '');
-        setPrice(prod.price_uah ?? '');
-        setCondition(prod.condition || 'used');
-        setDescription(prod.description || '');
-        setCategoryId(prod.category_id || '');
+
+        let urls =
+          (
+            prod.product_images || []
+          )
+            .map(
+              item => item.image_url
+            )
+            .filter(Boolean);
+
+
+        if (
+          urls.length === 0 &&
+          prod.image_url
+        ) {
+          urls = [
+            prod.image_url
+          ];
+        }
+
+
+        setEditingProductId(
+          prod.id
+        );
+
+        setTitle(
+          prod.title || ''
+        );
+
+        setPrice(
+          prod.price_uah ?? ''
+        );
+
+        setCondition(
+          prod.condition || 'used'
+        );
+
+        setDescription(
+          prod.description || ''
+        );
+
+        setCategoryId(
+          prod.category_id
+            ? String(
+                prod.category_id
+              )
+            : ''
+        );
+
         setImageFiles([]);
         setImagePreviews([]);
-        setExistingImageUrls(urls.length ? urls.slice(0, 5) : (prod.image_url ? [prod.image_url] : []));
+
+        setExistingImageUrls(
+          urls.slice(0, 5)
+        );
+
         setTab('add');
       }
 
+
       function resetForm() {
+
+        imagePreviews.forEach(url => {
+
+          try {
+            URL.revokeObjectURL(url);
+          } catch {}
+
+        });
+
+
         setEditingProductId(null);
         setTitle('');
         setPrice('');
@@ -208,548 +848,3368 @@
         setExistingImageUrls([]);
       }
 
-      async function handleSaveProduct(e) {
-        e.preventDefault();
-        if (!title.trim() || !price) return alert('Будь ласка, вкажіть назву та ціну!');
-        if (!currentDbUser) return alert('Користувача ще не завантажено.');
+
+      async function uploadImages() {
+
+        const uploadedUrls = [];
+
+
+        for (
+          const file of imageFiles
+        ) {
+
+          const extension =
+            (
+              file.name
+                ?.split('.')
+                .pop() ||
+              'jpg'
+            )
+              .toLowerCase()
+              .replace(
+                /[^a-z0-9]/g,
+                ''
+              ) ||
+            'jpg';
+
+
+          const fileName =
+            `${currentUser.id}/` +
+            `${Date.now()}_` +
+            `${Math.random()
+              .toString(36)
+              .slice(2)}.` +
+            `${extension}`;
+
+
+          const {
+            error: uploadError
+          } =
+            await supabaseClient
+              .storage
+              .from('product-images')
+              .upload(
+                fileName,
+                file,
+                {
+                  cacheControl:
+                    '3600',
+                  upsert: false
+                }
+              );
+
+
+          if (uploadError) {
+
+            throw new Error(
+              'Помилка фото:\n' +
+              getErrorText(
+                uploadError
+              )
+            );
+          }
+
+
+          const {
+            data: publicData
+          } =
+            supabaseClient
+              .storage
+              .from('product-images')
+              .getPublicUrl(
+                fileName
+              );
+
+
+          if (
+            publicData?.publicUrl
+          ) {
+            uploadedUrls.push(
+              publicData.publicUrl
+            );
+          }
+        }
+
+
+        return uploadedUrls;
+      }
+
+
+      async function handleSaveProduct(event) {
+
+        event.preventDefault();
+
+
+        if (!currentDbUser?.id) {
+
+          alert(
+            userError
+              ? 'Не вдалося завантажити профіль:\n\n' +
+                userError
+              : 'Профіль ще завантажується. Спробуйте через кілька секунд.'
+          );
+
+          return;
+        }
+
+
+        if (!title.trim()) {
+
+          alert(
+            'Вкажіть назву товару.'
+          );
+
+          return;
+        }
+
+
+        const parsedPrice =
+          Number(price);
+
+
+        if (
+          !Number.isFinite(
+            parsedPrice
+          ) ||
+          parsedPrice < 0
+        ) {
+
+          alert(
+            'Вкажіть правильну ціну.'
+          );
+
+          return;
+        }
+
+
+        if (!categoryId) {
+
+          alert(
+            'Оберіть категорію.'
+          );
+
+          return;
+        }
+
+
         setIsSubmitting(true);
 
-        try {
-          let uploadedUrls = [];
-          for (const file of imageFiles) {
-            const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-            const fileName = `${currentUser.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-            const { error } = await supabaseClient.storage.from('product-images').upload(fileName, file);
-            if (error) throw error;
-            const { data } = supabaseClient.storage.from('product-images').getPublicUrl(fileName);
-            uploadedUrls.push(data.publicUrl);
-          }
 
-          const finalImages = [...existingImageUrls, ...uploadedUrls].slice(0, 5);
-          const mainImage = finalImages[0] || null;
+        try {
+
+          const uploadedUrls =
+            await uploadImages();
+
+
+          const finalImages =
+            [
+              ...existingImageUrls,
+              ...uploadedUrls
+            ]
+              .filter(Boolean)
+              .slice(0, 5);
+
+
+          const mainImage =
+            finalImages[0] ||
+            null;
+
+
+          const productPayload = {
+
+            title:
+              title.trim(),
+
+            price_uah:
+              parsedPrice,
+
+            condition,
+
+            description:
+              description.trim(),
+
+            category_id:
+              Number(categoryId),
+
+            image_url:
+              mainImage
+
+          };
+
 
           if (editingProductId) {
-            const { error } = await supabaseClient.from('products').update({
-              title: title.trim(),
-              price_uah: parseFloat(price),
-              condition,
-              description: description.trim(),
-              category_id: categoryId ? parseInt(categoryId) : null,
-              image_url: mainImage
-            }).eq('id', editingProductId).eq('user_id', currentDbUser.id);
-            if (error) throw error;
 
-            await supabaseClient.from('product_images').delete().eq('product_id', editingProductId);
-            if (finalImages.length) {
-              const { error: galleryError } = await supabaseClient.from('product_images').insert(
-                finalImages.map(url => ({ product_id: editingProductId, image_url: url }))
+            const {
+              error: updateError
+            } =
+              await supabaseClient
+                .from('products')
+                .update(
+                  productPayload
+                )
+                .eq(
+                  'id',
+                  editingProductId
+                )
+                .eq(
+                  'user_id',
+                  currentDbUser.id
+                );
+
+
+            if (updateError) {
+
+              throw new Error(
+                getErrorText(
+                  updateError
+                )
               );
-              if (galleryError) throw galleryError;
             }
-            alert('✏️ Оголошення успішно оновлено!');
+
+
+            const {
+              error: deleteImagesError
+            } =
+              await supabaseClient
+                .from('product_images')
+                .delete()
+                .eq(
+                  'product_id',
+                  editingProductId
+                );
+
+
+            if (deleteImagesError) {
+
+              throw new Error(
+                'Не вдалося оновити галерею:\n' +
+                getErrorText(
+                  deleteImagesError
+                )
+              );
+            }
+
+
+            if (
+              finalImages.length > 0
+            ) {
+
+              const {
+                error: imagesInsertError
+              } =
+                await supabaseClient
+                  .from(
+                    'product_images'
+                  )
+                  .insert(
+                    finalImages.map(
+                      url => ({
+                        product_id:
+                          editingProductId,
+                        image_url:
+                          url
+                      })
+                    )
+                  );
+
+
+              if (
+                imagesInsertError
+              ) {
+
+                throw new Error(
+                  'Не вдалося зберегти фото:\n' +
+                  getErrorText(
+                    imagesInsertError
+                  )
+                );
+              }
+            }
+
+
+            alert(
+              '✅ Оголошення оновлено.'
+            );
+
           } else {
-            const { data: newProduct, error } = await supabaseClient.from('products').insert([{
-              user_id: currentDbUser.id,
-              title: title.trim(),
-              price_uah: parseFloat(price),
-              condition,
-              description: description.trim(),
-              category_id: categoryId ? parseInt(categoryId) : null,
-              image_url: mainImage
-            }]).select().single();
-            if (error) throw error;
 
-            if (finalImages.length) {
-              const { error: galleryError } = await supabaseClient.from('product_images').insert(
-                finalImages.map(url => ({ product_id: newProduct.id, image_url: url }))
+            const {
+              data: newProduct,
+              error: insertError
+            } =
+              await supabaseClient
+                .from('products')
+                .insert([
+                  {
+                    ...productPayload,
+                    user_id:
+                      currentDbUser.id
+                  }
+                ])
+                .select('*')
+                .single();
+
+
+            if (insertError) {
+
+              throw new Error(
+                getErrorText(
+                  insertError
+                )
               );
-              if (galleryError) throw galleryError;
             }
-            alert('🎉 Оголошення опубліковано!');
+
+
+            if (
+              !newProduct?.id
+            ) {
+
+              throw new Error(
+                'Supabase не повернув ID нового оголошення.'
+              );
+            }
+
+
+            if (
+              finalImages.length > 0
+            ) {
+
+              const {
+                error: galleryError
+              } =
+                await supabaseClient
+                  .from(
+                    'product_images'
+                  )
+                  .insert(
+                    finalImages.map(
+                      url => ({
+                        product_id:
+                          newProduct.id,
+                        image_url:
+                          url
+                      })
+                    )
+                  );
+
+
+              if (galleryError) {
+
+                throw new Error(
+                  'Оголошення створено, але фото не збережено:\n' +
+                  getErrorText(
+                    galleryError
+                  )
+                );
+              }
+            }
+
+
+            alert(
+              '🎉 Оголошення опубліковано.'
+            );
           }
 
+
           resetForm();
-          setTab('catalog');
+
           await fetchProducts();
-        } catch (err) {
-          alert('Помилка збереження: ' + (err?.message || err));
+
+          setTab('catalog');
+
+
+        } catch (error) {
+
+          console.error(
+            'SAVE ERROR:',
+            error
+          );
+
+
+          alert(
+            'Помилка збереження:\n\n' +
+            (
+              error?.message ||
+              String(error)
+            )
+          );
+
+
         } finally {
+
           setIsSubmitting(false);
+
         }
       }
+
 
       async function toggleSoldStatus(prod) {
-        const newStatus = !prod.is_sold;
-        const { error } = await supabaseClient.from('products').update({ is_sold: newStatus }).eq('id', prod.id);
-        if (!error) {
-          setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, is_sold: newStatus } : p));
-        }
-      }
 
-      async function handleDeleteProduct(id) {
-        if (!confirm('Ви дійсно хочете видалити це оголошення?')) return;
-        const { error } = await supabaseClient.from('products').delete().eq('id', id);
-        if (!error) {
-          alert('Оголошення видалено!');
-          fetchProducts();
-        } else {
-          alert('Помилка видалення: ' + error.message);
-        }
-      }
+        if (!currentDbUser?.id) {
 
-      async function waitForBoost(productId, attempts = 8) {
-        for (let i = 0; i < attempts; i++) {
-          const { data } = await supabaseClient
+          alert(
+            'Профіль користувача не готовий.'
+          );
+
+          return;
+        }
+
+
+        const newStatus =
+          !prod.is_sold;
+
+
+        const {
+          error
+        } =
+          await supabaseClient
             .from('products')
-            .select('boosted_until')
-            .eq('id', productId)
-            .maybeSingle();
-          if (data?.boosted_until && new Date(data.boosted_until) > new Date()) return true;
-          await new Promise(resolve => setTimeout(resolve, 1500));
+            .update({
+              is_sold:
+                newStatus
+            })
+            .eq(
+              'id',
+              prod.id
+            )
+            .eq(
+              'user_id',
+              currentDbUser.id
+            );
+
+
+        if (error) {
+
+          alert(
+            'Помилка:\n' +
+            getErrorText(error)
+          );
+
+          return;
         }
+
+
+        setProducts(prev =>
+          prev.map(item =>
+            item.id === prod.id
+              ? {
+                  ...item,
+                  is_sold:
+                    newStatus
+                }
+              : item
+          )
+        );
+      }
+
+
+      async function handleDeleteProduct(prod) {
+
+        if (!currentDbUser?.id) {
+
+          return;
+        }
+
+
+        const confirmed =
+          confirm(
+            'Видалити це оголошення?'
+          );
+
+
+        if (!confirmed) {
+
+          return;
+        }
+
+
+        const {
+          error
+        } =
+          await supabaseClient
+            .from('products')
+            .delete()
+            .eq(
+              'id',
+              prod.id
+            )
+            .eq(
+              'user_id',
+              currentDbUser.id
+            );
+
+
+        if (error) {
+
+          alert(
+            'Помилка видалення:\n' +
+            getErrorText(error)
+          );
+
+          return;
+        }
+
+
+        await fetchProducts();
+
+        alert(
+          '🗑️ Оголошення видалено.'
+        );
+      }
+
+
+      async function waitForBoost(
+        productId,
+        attempts = 12
+      ) {
+
+        for (
+          let i = 0;
+          i < attempts;
+          i++
+        ) {
+
+          const {
+            data,
+            error
+          } =
+            await supabaseClient
+              .from('products')
+              .select(
+                'boosted_until'
+              )
+              .eq(
+                'id',
+                productId
+              )
+              .maybeSingle();
+
+
+          if (
+            !error &&
+            data?.boosted_until &&
+            new Date(
+              data.boosted_until
+            ) > new Date()
+          ) {
+
+            return true;
+          }
+
+
+          await sleep(1500);
+        }
+
+
         return false;
       }
 
+
       async function boostProduct(prod) {
-        if (!prod?.id || prod.is_sold || !currentDbUser) return;
-        setBoostingProductId(prod.id);
+
+        if (
+          !prod?.id ||
+          prod.is_sold
+        ) {
+          return;
+        }
+
+
+        if (!currentDbUser?.id) {
+
+          alert(
+            'Профіль користувача ще не завантажений.'
+          );
+
+          return;
+        }
+
+
+        setBoostingProductId(
+          prod.id
+        );
+
+
         try {
-          const { data, error } = await supabaseClient.functions.invoke('create-telegram-invoice', {
-            body: { productId: prod.id, telegramUserId: currentUser.id }
-          });
-          if (error || !data?.invoiceLink) {
-            alert('Помилка створення рахунку: ' + (error?.message || data?.error || 'Невідома помилка'));
+
+          const {
+            data,
+            error
+          } =
+            await supabaseClient
+              .functions
+              .invoke(
+                'create-telegram-invoice',
+                {
+                  body: {
+                    productId:
+                      prod.id,
+                    telegramUserId:
+                      currentUser.id
+                  }
+                }
+              );
+
+
+          if (
+            error ||
+            !data?.invoiceLink
+          ) {
+
+            let message =
+              data?.error ||
+              error?.message ||
+              'Не вдалося створити рахунок.';
+
+
+            try {
+
+              if (
+                error?.context
+              ) {
+
+                const contextData =
+                  await error.context
+                    .json();
+
+                if (
+                  contextData?.error
+                ) {
+                  message =
+                    contextData.error;
+                }
+              }
+
+            } catch {}
+
+
+            alert(
+              'Помилка створення рахунку:\n\n' +
+              message
+            );
+
             return;
           }
-          if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.openInvoice(data.invoiceLink, async (status) => {
-              if (status === 'paid') {
-                const activated = await waitForBoost(prod.id);
-                alert(activated ? '⭐ Оплата успішна! Оголошення піднято в TOP на 3 дні.' : '⭐ Оплата пройшла. TOP активується протягом кількох секунд.');
-                await fetchProducts();
-              } else if (status === 'cancelled') alert('Оплату скасовано.');
-              else if (status === 'failed') alert('Оплата не пройшла.');
-            });
+
+
+          if (
+            window.Telegram
+              ?.WebApp
+              ?.openInvoice
+          ) {
+
+            window.Telegram
+              .WebApp
+              .openInvoice(
+                data.invoiceLink,
+                async status => {
+
+                  if (
+                    status === 'paid'
+                  ) {
+
+                    const activated =
+                      await waitForBoost(
+                        prod.id
+                      );
+
+
+                    await fetchProducts();
+
+
+                    if (
+                      activated
+                    ) {
+
+                      alert(
+                        '⭐ TOP активовано на 3 дні!'
+                      );
+
+                    } else {
+
+                      alert(
+                        '⭐ Оплата пройшла. Telegram підтверджує TOP. Оновіть каталог через кілька секунд.'
+                      );
+                    }
+
+                  } else if (
+                    status ===
+                    'cancelled'
+                  ) {
+
+                    alert(
+                      'Оплату скасовано.'
+                    );
+
+                  } else if (
+                    status ===
+                    'failed'
+                  ) {
+
+                    alert(
+                      'Оплата не пройшла.'
+                    );
+                  }
+                }
+              );
+
           } else {
-            window.open(data.invoiceLink, '_blank');
+
+            alert(
+              'Оплату потрібно відкривати всередині Telegram.'
+            );
           }
-        } catch (err) {
-          alert('Сталася помилка: ' + (err?.message || err));
+
+
+        } catch (error) {
+
+          console.error(
+            'BOOST:',
+            error
+          );
+
+
+          alert(
+            'Помилка TOP:\n\n' +
+            (
+              error?.message ||
+              String(error)
+            )
+          );
+
+
         } finally {
-          setBoostingProductId(null);
+
+          setBoostingProductId(
+            null
+          );
+
         }
       }
 
-      async function handleAddReview(e) {
-        e.preventDefault();
-        if (!selectedProduct?.users?.id || !currentDbUser) return;
 
-        const { error } = await supabaseClient.from('reviews').insert([{
-          seller_id: selectedProduct.users.id,
-          reviewer_id: currentDbUser.id,
-          rating: parseInt(newRating),
-          comment: newReviewComment
-        }]);
+      async function handleAddReview(event) {
 
-        if (!error) {
-          alert('Дякуємо за ваш відгук!');
-          setNewReviewComment('');
-          const { data: revs } = await supabaseClient.from('reviews').select('*').eq('seller_id', selectedProduct.users.id).order('created_at', { ascending: false });
-          if (revs) setSellerReviews(revs);
-        } else {
-          alert('Помилка додавання відгуку: ' + error.message);
+        event.preventDefault();
+
+
+        if (
+          !selectedProduct?.users?.id ||
+          !currentDbUser?.id
+        ) {
+
+          alert(
+            'Не вдалося визначити користувача.'
+          );
+
+          return;
         }
+
+
+        if (
+          selectedProduct.users.id ===
+          currentDbUser.id
+        ) {
+
+          alert(
+            'Не можна залишити відгук самому собі.'
+          );
+
+          return;
+        }
+
+
+        const {
+          error
+        } =
+          await supabaseClient
+            .from('reviews')
+            .insert([
+              {
+                seller_id:
+                  selectedProduct
+                    .users.id,
+                reviewer_id:
+                  currentDbUser.id,
+                rating:
+                  Number(
+                    newRating
+                  ),
+                comment:
+                  newReviewComment
+                    .trim()
+              }
+            ]);
+
+
+        if (error) {
+
+          alert(
+            'Помилка відгуку:\n' +
+            getErrorText(error)
+          );
+
+          return;
+        }
+
+
+        setNewReviewComment('');
+
+
+        const {
+          data
+        } =
+          await supabaseClient
+            .from('reviews')
+            .select('*')
+            .eq(
+              'seller_id',
+              selectedProduct
+                .users.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            );
+
+
+        setSellerReviews(
+          data || []
+        );
+
+
+        alert(
+          '⭐ Відгук додано.'
+        );
       }
 
-      function openSellerChat(username) {
-        if (!username) return alert('У продавця немає юзернейму Telegram!');
-        tg?.openTelegramLink(`https://t.me/${username}`);
+
+      function openSellerChat(
+        username
+      ) {
+
+        if (!username) {
+
+          alert(
+            'У продавця немає Telegram username.'
+          );
+
+          return;
+        }
+
+
+        const clean =
+          String(username)
+            .replace(
+              /^@/,
+              ''
+            );
+
+
+        tg?.openTelegramLink(
+          `https://t.me/${clean}`
+        );
       }
+
 
       function shareProduct(prod) {
-        const text = `Подивіться товар: ${prod.title} за ${prod.price_uah} ₴ в OLX Mini App!`;
-        tg?.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(text)}`);
+
+        const text =
+          `Подивіться товар: ` +
+          `${prod.title} — ` +
+          `${prod.price_uah} ₴`;
+
+
+        const url =
+          'https://t.me/share/url?' +
+          'url=' +
+          encodeURIComponent(
+            window.location.href
+          ) +
+          '&text=' +
+          encodeURIComponent(
+            text
+          );
+
+
+        tg?.openTelegramLink(
+          url
+        );
       }
 
-      const filteredProducts = products.filter(prod => {
-        const matchesCategory = selectedCategory ? prod.category_id === selectedCategory : true;
-        const matchesSearch = prod.title.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesMinPrice = minPrice ? prod.price_uah >= parseFloat(minPrice) : true;
-        const matchesMaxPrice = maxPrice ? prod.price_uah <= parseFloat(maxPrice) : true;
-        const matchesCondition = conditionFilter === 'all' ? true : prod.condition === conditionFilter;
-        return matchesCategory && matchesSearch && matchesMinPrice && matchesMaxPrice && matchesCondition;
-      }).sort((a, b) => {
-        const aTop = a.boosted_until && new Date(a.boosted_until) > new Date();
-        const bTop = b.boosted_until && new Date(b.boosted_until) > new Date();
-        if (aTop !== bTop) return aTop ? -1 : 1;
-        if (sortOption === 'price_asc') return a.price_uah - b.price_uah;
-        if (sortOption === 'price_desc') return b.price_uah - a.price_uah;
-        return new Date(b.created_at) - new Date(a.created_at);
-      });
 
-      const favoriteProducts = products.filter(p => favoriteIds.includes(p.id));
-      const myProducts = products.filter(p => p.users?.telegram_id === currentUser.id);
-      const avgRating = sellerReviews.length > 0 ? (sellerReviews.reduce((acc, curr) => acc + curr.rating, 0) / sellerReviews.length).toFixed(1) : null;
-      return (
-        <div class="max-w-md mx-auto min-h-screen flex flex-col justify-between bg-[#002f34] text-white">
-          <div>
-            <header class="p-4 bg-[#002f34] flex justify-between items-center sticky top-0 z-10 border-b border-[#104b50]">
-              <div class="flex items-center space-x-2">
-                <span class="text-2xl font-black text-[#23e5bf]">OLX</span>
-                <span class="text-xs bg-[#104b50] text-[#23e5bf] font-bold px-2 py-0.5 rounded">UA</span>
+      function isTop(prod) {
+
+        return Boolean(
+          prod.boosted_until &&
+          new Date(
+            prod.boosted_until
+          ) > new Date()
+        );
+      }
+
+
+      const filteredProducts =
+        products
+          .filter(prod => {
+
+            const categoryMatch =
+              selectedCategory
+                ? String(
+                    prod.category_id
+                  ) ===
+                  String(
+                    selectedCategory
+                  )
+                : true;
+
+
+            const searchMatch =
+              String(
+                prod.title || ''
+              )
+                .toLowerCase()
+                .includes(
+                  searchQuery
+                    .toLowerCase()
+                );
+
+
+            const minMatch =
+              minPrice
+                ? Number(
+                    prod.price_uah
+                  ) >=
+                  Number(
+                    minPrice
+                  )
+                : true;
+
+
+            const maxMatch =
+              maxPrice
+                ? Number(
+                    prod.price_uah
+                  ) <=
+                  Number(
+                    maxPrice
+                  )
+                : true;
+
+
+            const conditionMatch =
+              conditionFilter ===
+              'all'
+                ? true
+                : prod.condition ===
+                  conditionFilter;
+
+
+            return (
+              categoryMatch &&
+              searchMatch &&
+              minMatch &&
+              maxMatch &&
+              conditionMatch
+            );
+          })
+          .sort((a, b) => {
+
+            const aTop =
+              isTop(a);
+
+            const bTop =
+              isTop(b);
+
+
+            if (
+              aTop !== bTop
+            ) {
+              return aTop
+                ? -1
+                : 1;
+            }
+
+
+            if (
+              sortOption ===
+              'price_asc'
+            ) {
+
+              return (
+                Number(
+                  a.price_uah
+                ) -
+                Number(
+                  b.price_uah
+                )
+              );
+            }
+
+
+            if (
+              sortOption ===
+              'price_desc'
+            ) {
+
+              return (
+                Number(
+                  b.price_uah
+                ) -
+                Number(
+                  a.price_uah
+                )
+              );
+            }
+
+
+            return (
+              new Date(
+                b.created_at
+              ) -
+              new Date(
+                a.created_at
+              )
+            );
+          });
+
+
+      const favoriteProducts =
+        products.filter(prod =>
+          favoriteIds.includes(
+            prod.id
+          )
+        );
+
+
+      const myProducts =
+        currentDbUser?.id
+          ? products.filter(
+              prod =>
+                prod.user_id ===
+                currentDbUser.id
+            )
+          : [];
+
+
+      const avgRating =
+        sellerReviews.length
+          ? (
+              sellerReviews.reduce(
+                (sum, review) =>
+                  sum +
+                  Number(
+                    review.rating ||
+                    0
+                  ),
+                0
+              ) /
+              sellerReviews.length
+            ).toFixed(1)
+          : null;
+
+
+      function ProductCard({
+        prod,
+        favoriteOnly = false
+      }) {
+
+        const favorite =
+          favoriteIds.includes(
+            prod.id
+          );
+
+
+        return (
+
+          <div
+            onClick={() =>
+              openProductDetails(
+                prod
+              )
+            }
+            className={
+              `bg-white rounded-xl overflow-hidden ` +
+              `p-2.5 text-[#002f34] shadow-md ` +
+              `relative cursor-pointer active:scale-[0.98] ` +
+              `transition ` +
+              (
+                prod.is_sold
+                  ? 'opacity-60'
+                  : ''
+              )
+            }
+          >
+
+            <button
+              type="button"
+              onClick={event =>
+                toggleFavorite(
+                  prod,
+                  event
+                )
+              }
+              className="
+                absolute
+                top-4
+                right-4
+                z-10
+                bg-white/90
+                w-8
+                h-8
+                rounded-full
+                shadow
+              "
+            >
+              {favorite
+                ? '❤️'
+                : '🤍'}
+            </button>
+
+
+            {prod.is_sold && (
+
+              <span
+                className="
+                  absolute
+                  top-4
+                  left-4
+                  z-10
+                  bg-red-600
+                  text-white
+                  text-[9px]
+                  font-black
+                  px-2
+                  py-1
+                  rounded
+                "
+              >
+                ПРОДАНО
+              </span>
+
+            )}
+
+
+            {!prod.is_sold &&
+              isTop(prod) && (
+
+              <span
+                className="
+                  absolute
+                  top-4
+                  left-4
+                  z-10
+                  bg-amber-400
+                  text-[#002f34]
+                  text-[9px]
+                  font-black
+                  px-2
+                  py-1
+                  rounded
+                "
+              >
+                ⭐ TOP
+              </span>
+
+            )}
+
+
+            {prod.image_url ? (
+
+              <div
+                className="
+                  w-full
+                  h-44
+                  bg-gray-100
+                  rounded-lg
+                  mb-2
+                  flex
+                  items-center
+                  justify-center
+                  overflow-hidden
+                "
+              >
+
+                <img
+                  src={prod.image_url}
+                  alt=""
+                  className="
+                    w-full
+                    h-full
+                    object-contain
+                  "
+                />
+
               </div>
-              <span class="text-xs bg-[#104b50] text-gray-200 font-medium px-2.5 py-1 rounded-full border border-[#1b646a]">👤 {currentUser.first_name}</span>
-            </header>
 
-            {tab === 'catalog' && (
-              <main class="p-4">
-                <div class="space-y-2 mb-3">
-                  <div class="flex gap-2">
-                    <input type="text" placeholder="🔍 Пошук оголошень..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} class="flex-1 border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#23e5bf]" />
-                    <button onClick={() => setShowFilters(!showFilters)} class={`px-3 py-2.5 rounded-xl border text-xs font-bold transition ${showFilters || minPrice || maxPrice || conditionFilter !== 'all' ? 'bg-[#23e5bf] text-[#002f34] border-[#23e5bf]' : 'bg-[#00474e] text-white border-[#104b50]'}`}>⚙️ Фільтри</button>
-                  </div>
-                  {showFilters && (
-                    <div class="bg-[#00383e] p-3 rounded-xl border border-[#104b50] space-y-3">
-                      <div>
-                        <label class="block text-[11px] font-bold text-gray-300 mb-1">Ціна (грн):</label>
-                        <div class="flex gap-2">
-                          <input type="number" placeholder="Від" value={minPrice} onChange={e => setMinPrice(e.target.value)} class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs" />
-                          <input type="number" placeholder="До" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} class="w-1/2 border border-gray-300 rounded-lg p-2 text-xs" />
-                        </div>
-                      </div>
-                      <div class="flex gap-2">
-                        <div class="w-1/2">
-                          <label class="block text-[11px] font-bold text-gray-300 mb-1">Стан товару:</label>
-                          <select value={conditionFilter} onChange={e => setConditionFilter(e.target.value)} class="w-full border border-gray-300 rounded-lg p-2 text-xs">
-                            <option value="all">Усі стани</option>
-                            <option value="new">✨ Новий</option>
-                            <option value="used">👌 Вживаний</option>
-                          </select>
-                        </div>
-                        <div class="w-1/2">
-                          <label class="block text-[11px] font-bold text-gray-300 mb-1">Сортування:</label>
-                          <select value={sortOption} onChange={e => setSortOption(e.target.value)} class="w-full border border-gray-300 rounded-lg p-2 text-xs">
-                            <option value="newest">⏱ Спочатку нові</option>
-                            <option value="price_asc">📉 Спочатку дешевші</option>
-                            <option value="price_desc">📈 Спочатку дорожчі</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+            ) : (
 
-                <div class="flex gap-2 overflow-x-auto pb-3 mb-3 no-scrollbar">
-                  <button onClick={() => setSelectedCategory(null)} class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === null ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'}`}>Всі товари</button>
-                  {categories.map(cat => (
-                    <button key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} class={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === cat.id ? 'bg-[#23e5bf] text-[#002f34]' : 'bg-[#00474e] text-white border border-[#104b50]'}`}>{cat.title}</button>
-                  ))}
-                </div>
-
-                {loading ? (
-                  <div class="text-center py-16 text-[#23e5bf] font-medium">Завантаження...</div>
-                ) : filteredProducts.length === 0 ? (
-                  <div class="text-center py-16 text-gray-300 bg-[#00383e] rounded-2xl border border-[#104b50] p-6">
-                    <p class="text-3xl mb-2">📦</p>
-                    <p class="font-bold text-white">Оголошень не знайдено</p>
-                  </div>
-                ) : (
-                  <div class="grid grid-cols-2 gap-3">
-                    {filteredProducts.map(prod => {
-                      const isFav = favoriteIds.includes(prod.id);
-                      return (
-                        <div key={prod.id} onClick={() => openProductDetails(prod)} class={`bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer active:scale-[0.98] transition relative ${prod.is_sold ? 'opacity-60' : ''}`}>
-                          <button onClick={e => toggleFavorite(prod, e)} class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow">{isFav ? '❤️' : '🤍'}</button>
-                          {prod.is_sold && <span class="absolute top-4 left-4 z-10 bg-red-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">ПРОДАНО</span>}
-                          {!prod.is_sold && prod.boosted_until && new Date(prod.boosted_until) > new Date() && <span class="absolute top-4 left-4 z-10 bg-amber-400 text-[#002f34] text-[9px] font-black uppercase px-2 py-0.5 rounded shadow">⭐ ТОП</span>}
-                          <div>
-                            {prod.image_url ? (
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                                <img src={prod.image_url} alt={prod.title} class="max-h-full max-w-full object-contain" />
-                              </div>
-                            ) : (
-                              <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">🖼️</div>
-                            )}
-                            <div class="flex gap-1 items-center mb-1">
-                              <span class="text-[9px] uppercase font-black text-[#002f34] bg-[#23e5bf] px-1.5 py-0.5 rounded">{prod.categories?.title || 'Товар'}</span>
-                              <span class="text-[9px] text-gray-500 font-bold">{prod.condition === 'new' ? '✨ Новий' : 'Вживаний'}</span>
-                            </div>
-                            <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">{prod.title}</h3>
-                          </div>
-                          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
-                            <span class="text-sm font-black text-[#002f34]">{prod.price_uah} ₴</span>
-                            <span class="text-[10px] text-gray-400 flex items-center gap-0.5">👁️ {prod.views_count || 0}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </main>
-            )}
-
-            {tab === 'add' && (
-              <main class="p-4">
-                <div class="bg-[#00383e] p-5 rounded-2xl border border-[#104b50] shadow-lg">
-                  <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-black text-white flex items-center gap-2">
-                      <span class="text-[#23e5bf]">{editingProductId ? '✏️' : '➕'}</span>
-                      {editingProductId ? 'Редагувати оголошення' : 'Нове оголошення'}
-                    </h2>
-                    {editingProductId && <button onClick={resetForm} class="text-xs text-red-400 font-bold underline">Скасувати</button>}
-                  </div>
-                  <form onSubmit={handleSaveProduct} class="space-y-4">
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Назва товару *</label>
-                      <input type="text" required placeholder="напр. Парфум Chanel Chance" value={title} onChange={e => setTitle(e.target.value)} class="w-full border border-gray-300 rounded-xl p-2.5 text-sm" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Ціна (₴) *</label>
-                      <input type="number" required step="0.01" placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} class="w-full border border-gray-300 rounded-xl p-2.5 text-sm" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Стан товару</label>
-                      <select value={condition} onChange={e => setCondition(e.target.value)} class="w-full border border-gray-300 rounded-xl p-2.5 text-sm">
-                        <option value="used">👌 Вживаний</option>
-                        <option value="new">✨ Новий</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Фото товару ({existingImageUrls.length + imageFiles.length}/5)</label>
-                      <div class="flex gap-2 overflow-x-auto py-1 no-scrollbar items-center">
-                        {existingImageUrls.map((src, i) => (
-                          <div key={'old-' + i} class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center">
-                            <img src={src} class="max-h-full max-w-full object-contain" />
-                            <button type="button" onClick={() => removeImage(i, true)} class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center">✕</button>
-                          </div>
-                        ))}
-                        {imagePreviews.map((src, i) => (
-                          <div key={'new-' + i} class="relative flex-shrink-0 w-20 h-28 bg-gray-900 rounded-xl border border-[#104b50] overflow-hidden flex items-center justify-center">
-                            <img src={src} class="max-h-full max-w-full object-contain" />
-                            <button type="button" onClick={() => removeImage(i)} class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center">✕</button>
-                          </div>
-                        ))}
-                        {existingImageUrls.length + imageFiles.length < 5 && (
-                          <label class="flex-shrink-0 w-20 h-28 border-2 border-dashed border-[#23e5bf] rounded-xl flex flex-col items-center justify-center cursor-pointer bg-[#00474e]">
-                            <span class="text-2xl text-[#23e5bf]">+</span>
-                            <span class="text-[10px] font-bold text-gray-200 mt-1">Додати</span>
-                            <input type="file" accept="image/*" multiple onChange={handleFilesAdd} class="hidden" />
-                          </label>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Категорія</label>
-                      <select value={categoryId} onChange={e => setCategoryId(e.target.value)} class="w-full border border-gray-300 rounded-xl p-2.5 text-sm">
-                        <option value="">Оберіть категорію</option>
-                        {categories.map(cat => (<option key={cat.id} value={cat.id}>{cat.title}</option>))}
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-gray-200 mb-1">Опис</label>
-                      <textarea rows="3" placeholder="Детальний опис товару..." value={description} onChange={e => setDescription(e.target.value)} class="w-full border border-gray-300 rounded-xl p-2.5 text-sm"></textarea>
-                    </div>
-                    <button type="submit" disabled={isSubmitting} class="w-full bg-[#23e5bf] text-[#002f34] font-black py-3 rounded-xl shadow-md hover:bg-[#1fd6b2] active:scale-[0.99] transition disabled:opacity-50">
-                      {isSubmitting ? 'Збереження...' : (editingProductId ? 'Зберегти зміни' : 'Опублікувати оголошення')}
-                    </button>
-                  </form>
-                </div>
-              </main>
-            )}
-            {tab === 'favorites' && (
-              <main class="p-4">
-                <h2 class="text-base font-bold text-white mb-3 flex items-center gap-2">
-                  <span>❤️</span>Збережені оголошення ({favoriteProducts.length})
-                </h2>
-                {favoriteProducts.length === 0 ? (
-                  <div class="text-center py-12 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
-                    <p class="text-2xl mb-2">🤍</p>
-                    <p class="text-sm font-bold text-white">Список обраного порожній</p>
-                  </div>
-                ) : (
-                  <div class="grid grid-cols-2 gap-3">
-                    {favoriteProducts.map(prod => (
-                      <div key={prod.id} onClick={() => openProductDetails(prod)} class="bg-white rounded-xl overflow-hidden flex flex-col justify-between p-2.5 text-[#002f34] shadow-md cursor-pointer relative">
-                        <button onClick={e => toggleFavorite(prod, e)} class="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm w-7 h-7 rounded-full flex items-center justify-center text-sm shadow">❤️</button>
-                        <div>
-                          {prod.image_url ? (
-                            <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                              <img src={prod.image_url} alt={prod.title} class="max-h-full max-w-full object-contain" />
-                            </div>
-                          ) : (
-                            <div class="w-full h-44 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-400 text-2xl">🖼️</div>
-                          )}
-                          <h3 class="font-bold text-xs text-[#002f34] line-clamp-2 leading-snug">{prod.title}</h3>
-                        </div>
-                        <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
-                          <span class="text-sm font-black text-[#002f34]">{prod.price_uah} ₴</span>
-                          <span class="text-xs text-blue-600 font-bold">➔</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </main>
-            )}
-
-            {tab === 'profile' && (
-              <main class="p-4">
-                <div class="bg-[#00383e] p-4 rounded-2xl border border-[#104b50] mb-4">
-                  <h2 class="text-base font-bold text-white flex items-center gap-2">
-                    <span>👤</span>Особистий кабінет
-                  </h2>
-                  <p class="text-xs text-gray-300 mt-1">Усього ваших оголошень: <b>{myProducts.length}</b></p>
-                </div>
-                <h3 class="text-xs uppercase font-bold text-gray-400 mb-2">Ваші публікації:</h3>
-                {myProducts.length === 0 ? (
-                  <div class="text-center py-8 text-gray-400 bg-[#00383e] rounded-xl border border-dashed border-[#104b50] p-4">
-                    <p class="text-sm">Ви ще не опублікували жодного товару</p>
-                  </div>
-                ) : (
-                  <div class="space-y-3">
-                    {myProducts.map(prod => (
-                      <div key={prod.id} class="bg-white p-3 rounded-xl text-[#002f34] flex flex-col gap-2 shadow-sm">
-                        <div class="flex gap-3 items-center justify-between">
-                          <div class="flex gap-3 items-center overflow-hidden">
-                            {prod.image_url ? (
-                              <img src={prod.image_url} alt={prod.title} class="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
-                            ) : (
-                              <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🖼️</div>
-                            )}
-                            <div class="truncate">
-                              <h4 class="font-bold text-xs truncate">{prod.title}</h4>
-                              <p class="text-xs font-black text-[#002f34] mt-0.5">{prod.price_uah} ₴</p>
-                            </div>
-                          </div>
-                          <div class="flex gap-1">
-                            <button onClick={() => startEditing(prod)} class="bg-blue-50 text-blue-600 p-2 rounded-lg text-xs font-bold" title="Редагувати">✏️</button>
-                            <button onClick={() => handleDeleteProduct(prod.id)} class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-bold" title="Видалити">🗑️</button>
-                          </div>
-                        </div>
-                        <div class="flex justify-between items-center pt-2 border-t border-gray-100 text-[11px]">
-                          <span class="text-gray-500 font-bold">Переглядів: 👁️ {prod.views_count || 0}</span>
-                          <button onClick={() => toggleSoldStatus(prod)} class={`px-2.5 py-1 rounded-full font-bold transition ${prod.is_sold ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-700'}`}>
-                            {prod.is_sold ? 'Позначити "В продажу"' : 'Позначити "Продано"'}
-                          </button>
-                        </div>
-                        <button onClick={() => boostProduct(prod)} disabled={boostingProductId === prod.id || prod.is_sold} class={`w-full px-3 py-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95 ${prod.is_sold ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : boostingProductId === prod.id ? 'bg-amber-50 text-amber-500 cursor-wait' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}>
-                          {boostingProductId === prod.id ? (<><span class="animate-spin">⏳</span>Створення рахунку...</>) : prod.is_sold ? (<><span class="text-gray-400">🚫</span>Продане оголошення</>) : (<><span class="text-amber-600">⭐</span>Підняти в топ (50 ⭐️)</>)}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </main>
-            )}
-          </div>
-
-          {selectedProduct && (
-            <div class="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-              <div class="bg-white text-[#002f34] w-full max-w-md rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 relative">
-                <button onClick={() => setSelectedProduct(null)} class="absolute top-4 right-4 bg-gray-200 text-gray-700 w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center z-10">✕</button>
-                <div class="w-full mb-4">
-                  {selectedProduct.product_images && selectedProduct.product_images.length > 0 ? (
-                    <div>
-                      <div class="flex gap-2 overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-2xl bg-gray-900 h-80">
-                        {selectedProduct.product_images.map((img, idx) => (
-                          <div key={idx} class="snap-center flex-shrink-0 w-full h-full flex items-center justify-center bg-gray-900">
-                            <img src={img.image_url} class="max-h-full max-w-full object-contain" />
-                          </div>
-                        ))}
-                      </div>
-                      <p class="text-[10px] text-gray-400 text-center mt-1 font-bold">👉 Гортайте вбік ({selectedProduct.product_images.length} фото)</p>
-                    </div>
-                  ) : selectedProduct.image_url ? (
-                    <div class="w-full h-80 bg-gray-900 rounded-2xl flex items-center justify-center">
-                      <img src={selectedProduct.image_url} class="max-h-full max-w-full object-contain rounded-2xl" />
-                    </div>
-                  ) : (
-                    <div class="w-full h-44 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 text-4xl">🖼️</div>
-                  )}
-                </div>
-
-                <div class="flex justify-between items-center mb-1">
-                  <div class="flex gap-2 items-center">
-                    <span class="text-xs uppercase font-black text-[#002f34] bg-[#23e5bf] px-2 py-0.5 rounded-md">{selectedProduct.categories?.title || 'Товар'}</span>
-                    <span class="text-xs text-gray-500 font-bold">{selectedProduct.condition === 'new' ? '✨ Новий' : '👌 Вживаний'}</span>
-                  </div>
-                  <span class="text-xs text-gray-400 font-bold">👁️ {selectedProduct.views_count || 0}</span>
-                </div>
-
-                <h2 class="text-xl font-black mt-2 leading-tight">{selectedProduct.title}</h2>
-                <div class="text-2xl font-black text-[#002f34] my-2">{selectedProduct.price_uah} ₴</div>
-
-                {selectedProduct.description && (
-                  <div class="my-4 border-t pt-3 border-gray-100">
-                    <h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Опис:</h4>
-                    <p class="text-xs text-gray-700 whitespace-pre-line leading-relaxed">{selectedProduct.description}</p>
-                  </div>
-                )}
-
-                <div class="my-4 border-t pt-3 border-gray-100">
-                  <div class="flex justify-between items-center mb-2">
-                    <h4 class="text-xs font-bold text-gray-500 uppercase">Рейтинг продавця:</h4>
-                    <span class="text-xs font-black text-amber-500">⭐ {avgRating ? `${avgRating} / 5` : 'Немає оцінок'}</span>
-                  </div>
-                  <form onSubmit={handleAddReview} class="bg-gray-50 p-3 rounded-xl mb-3 space-y-2">
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs font-bold text-gray-600">Оцінка:</span>
-                      <select value={newRating} onChange={e => setNewRating(e.target.value)} class="border rounded p-1 text-xs">
-                        <option value="5">⭐⭐⭐⭐⭐ (5)</option>
-                        <option value="4">⭐⭐⭐⭐ (4)</option>
-                        <option value="3">⭐⭐⭐ (3)</option>
-                        <option value="2">⭐⭐ (2)</option>
-                        <option value="1">⭐ (1)</option>
-                      </select>
-                    </div>
-                    <input type="text" placeholder="Напишіть відгук про продавця..." value={newReviewComment} onChange={e => setNewReviewComment(e.target.value)} class="w-full border rounded-lg p-2 text-xs" />
-                    <button type="submit" class="w-full bg-gray-800 text-white font-bold py-1.5 rounded-lg text-xs">Залишити відгук</button>
-                  </form>
-                  <div class="space-y-2 max-h-32 overflow-y-auto no-scrollbar">
-                    {sellerReviews.map(rev => (
-                      <div key={rev.id} class="bg-gray-50 p-2 rounded-lg text-xs">
-                        <div class="flex justify-between font-bold text-amber-500">
-                          <span>{'⭐'.repeat(rev.rating)}</span>
-                          <span class="text-[10px] text-gray-400">{new Date(rev.created_at).toLocaleDateString()}</span>
-                        </div>
-                        <p class="text-gray-700 mt-0.5">{rev.comment}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div class="flex gap-2 mt-5">
-                  <button onClick={() => openSellerChat(selectedProduct.users?.username)} class="flex-1 bg-[#002f34] text-[#23e5bf] font-black py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                    <span>💬</span>Написати продавцю
-                  </button>
-                  <button onClick={e => toggleFavorite(selectedProduct, e)} class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition">
-                    {favoriteIds.includes(selectedProduct.id) ? '❤️' : '🤍'}
-                  </button>
-                  <button onClick={() => shareProduct(selectedProduct)} class="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold active:scale-95 transition">🔗</button>
-                </div>
+              <div
+                className="
+                  w-full
+                  h-44
+                  bg-gray-100
+                  rounded-lg
+                  mb-2
+                  flex
+                  items-center
+                  justify-center
+                  text-3xl
+                "
+              >
+                🖼️
               </div>
+
+            )}
+
+
+            <div
+              className="
+                flex
+                gap-1
+                items-center
+                mb-1
+              "
+            >
+
+              <span
+                className="
+                  text-[9px]
+                  font-black
+                  bg-[#23e5bf]
+                  px-1.5
+                  py-0.5
+                  rounded
+                "
+              >
+                {
+                  prod.categories
+                    ?.title ||
+                  'Товар'
+                }
+              </span>
+
+              <span
+                className="
+                  text-[9px]
+                  text-gray-500
+                  font-bold
+                "
+              >
+                {
+                  prod.condition ===
+                  'new'
+                    ? '✨ Новий'
+                    : '👌 Вживаний'
+                }
+              </span>
+
             </div>
+
+
+            <h3
+              className="
+                font-bold
+                text-xs
+                leading-snug
+                min-h-[32px]
+              "
+            >
+              {prod.title}
+            </h3>
+
+
+            <div
+              className="
+                mt-2
+                pt-2
+                border-t
+                flex
+                justify-between
+                items-center
+              "
+            >
+
+              <span
+                className="
+                  text-sm
+                  font-black
+                "
+              >
+                {prod.price_uah} ₴
+              </span>
+
+              {!favoriteOnly && (
+
+                <span
+                  className="
+                    text-[10px]
+                    text-gray-400
+                  "
+                >
+                  👁️ {
+                    prod.views_count ||
+                    0
+                  }
+                </span>
+
+              )}
+
+            </div>
+
+          </div>
+        );
+      }
+
+
+      return (
+
+        <div
+          className="
+            max-w-md
+            mx-auto
+            min-h-screen
+            bg-[#002f34]
+            text-white
+          "
+        >
+
+          <header
+            className="
+              p-4
+              bg-[#002f34]
+              flex
+              justify-between
+              items-center
+              sticky
+              top-0
+              z-20
+              border-b
+              border-[#104b50]
+            "
+          >
+
+            <div
+              className="
+                flex
+                items-center
+                gap-2
+              "
+            >
+
+              <span
+                className="
+                  text-3xl
+                  font-black
+                  text-[#23e5bf]
+                "
+              >
+                OLX
+              </span>
+
+              <span
+                className="
+                  text-xs
+                  bg-[#104b50]
+                  text-[#23e5bf]
+                  font-bold
+                  px-2
+                  py-1
+                  rounded
+                "
+              >
+                UA
+              </span>
+
+            </div>
+
+
+            <span
+              className="
+                text-xs
+                bg-[#104b50]
+                px-3
+                py-1.5
+                rounded-full
+                border
+                border-[#1b646a]
+              "
+            >
+              👤 {
+                currentUser.first_name ||
+                'Користувач'
+              }
+            </span>
+
+          </header>
+
+
+          {userError && (
+
+            <div
+              className="
+                m-4
+                p-4
+                rounded-xl
+                bg-red-950/60
+                border
+                border-red-700
+              "
+            >
+
+              <div
+                className="
+                  font-black
+                  text-red-300
+                  mb-1
+                "
+              >
+                ⚠️ Помилка профілю
+              </div>
+
+              <div
+                className="
+                  text-xs
+                  whitespace-pre-wrap
+                  text-red-100
+                "
+              >
+                {userError}
+              </div>
+
+              <button
+                type="button"
+                onClick={initApp}
+                className="
+                  mt-3
+                  bg-white
+                  text-red-700
+                  font-black
+                  px-4
+                  py-2
+                  rounded-lg
+                  text-xs
+                "
+              >
+                Спробувати ще раз
+              </button>
+
+            </div>
+
           )}
 
-          <nav class="fixed bottom-0 left-0 right-0 bg-[#002f34] border-t border-[#104b50] flex justify-around py-2.5 max-w-md mx-auto z-20 shadow-lg">
-            <button onClick={() => setTab('catalog')} class={`flex flex-col items-center text-xs font-bold transition ${tab === 'catalog' ? 'text-[#23e5bf]' : 'text-gray-400'}`}>
-              <span class="text-base mb-0.5">🔍</span><span>Каталог</span>
+
+          {tab === 'catalog' && (
+
+            <main className="p-4">
+
+              <div
+                className="
+                  flex
+                  gap-2
+                  mb-3
+                "
+              >
+
+                <input
+                  type="text"
+                  placeholder="🔍 Пошук..."
+                  value={searchQuery}
+                  onChange={event =>
+                    setSearchQuery(
+                      event.target.value
+                    )
+                  }
+                  className="
+                    flex-1
+                    rounded-xl
+                    p-3
+                    text-sm
+                  "
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowFilters(
+                      value =>
+                        !value
+                    )
+                  }
+                  className="
+                    bg-[#00474e]
+                    border
+                    border-[#104b50]
+                    rounded-xl
+                    px-3
+                    font-bold
+                    text-xs
+                  "
+                >
+                  ⚙️
+                </button>
+
+              </div>
+
+
+              {showFilters && (
+
+                <div
+                  className="
+                    bg-[#00383e]
+                    border
+                    border-[#104b50]
+                    p-3
+                    rounded-xl
+                    mb-3
+                    space-y-2
+                  "
+                >
+
+                  <div
+                    className="
+                      flex
+                      gap-2
+                    "
+                  >
+
+                    <input
+                      type="number"
+                      placeholder="Ціна від"
+                      value={minPrice}
+                      onChange={event =>
+                        setMinPrice(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-1/2
+                        rounded-lg
+                        p-2
+                        text-xs
+                      "
+                    />
+
+                    <input
+                      type="number"
+                      placeholder="Ціна до"
+                      value={maxPrice}
+                      onChange={event =>
+                        setMaxPrice(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-1/2
+                        rounded-lg
+                        p-2
+                        text-xs
+                      "
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="
+                      flex
+                      gap-2
+                    "
+                  >
+
+                    <select
+                      value={
+                        conditionFilter
+                      }
+                      onChange={event =>
+                        setConditionFilter(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-1/2
+                        rounded-lg
+                        p-2
+                        text-xs
+                      "
+                    >
+                      <option value="all">
+                        Усі стани
+                      </option>
+
+                      <option value="new">
+                        ✨ Новий
+                      </option>
+
+                      <option value="used">
+                        👌 Вживаний
+                      </option>
+                    </select>
+
+
+                    <select
+                      value={sortOption}
+                      onChange={event =>
+                        setSortOption(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-1/2
+                        rounded-lg
+                        p-2
+                        text-xs
+                      "
+                    >
+                      <option value="newest">
+                        Спочатку нові
+                      </option>
+
+                      <option value="price_asc">
+                        Дешевші
+                      </option>
+
+                      <option value="price_desc">
+                        Дорожчі
+                      </option>
+                    </select>
+
+                  </div>
+
+                </div>
+
+              )}
+
+
+              {categoriesError && (
+
+                <div
+                  className="
+                    bg-red-950/50
+                    border
+                    border-red-700
+                    rounded-xl
+                    p-3
+                    mb-3
+                    text-xs
+                  "
+                >
+                  Не вдалося завантажити категорії:
+                  <br />
+                  {categoriesError}
+                </div>
+
+              )}
+
+
+              <div
+                className="
+                  flex
+                  gap-2
+                  overflow-x-auto
+                  no-scrollbar
+                  pb-3
+                  mb-2
+                "
+              >
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedCategory(
+                      null
+                    )
+                  }
+                  className={
+                    `px-4 py-2 rounded-full ` +
+                    `text-xs font-bold whitespace-nowrap ` +
+                    (
+                      selectedCategory ===
+                      null
+                        ? 'bg-[#23e5bf] text-[#002f34]'
+                        : 'bg-[#00474e] text-white border border-[#104b50]'
+                    )
+                  }
+                >
+                  Всі товари
+                </button>
+
+
+                {categories.map(
+                  category => (
+
+                    <button
+                      type="button"
+                      key={category.id}
+                      onClick={() =>
+                        setSelectedCategory(
+                          category.id
+                        )
+                      }
+                      className={
+                        `px-4 py-2 rounded-full ` +
+                        `text-xs font-bold whitespace-nowrap ` +
+                        (
+                          String(
+                            selectedCategory
+                          ) ===
+                          String(
+                            category.id
+                          )
+                            ? 'bg-[#23e5bf] text-[#002f34]'
+                            : 'bg-[#00474e] text-white border border-[#104b50]'
+                        )
+                      }
+                    >
+                      {category.title}
+                    </button>
+
+                  )
+                )}
+
+              </div>
+
+
+              {loading ? (
+
+                <div
+                  className="
+                    text-center
+                    py-16
+                    text-[#23e5bf]
+                    font-bold
+                  "
+                >
+                  Завантаження...
+                </div>
+
+              ) : filteredProducts.length ===
+                  0 ? (
+
+                <div
+                  className="
+                    bg-[#00383e]
+                    border
+                    border-[#104b50]
+                    rounded-2xl
+                    text-center
+                    p-8
+                    text-gray-300
+                  "
+                >
+                  <div className="text-4xl">
+                    📦
+                  </div>
+
+                  <div
+                    className="
+                      font-bold
+                      mt-2
+                    "
+                  >
+                    Оголошень немає
+                  </div>
+                </div>
+
+              ) : (
+
+                <div
+                  className="
+                    grid
+                    grid-cols-2
+                    gap-3
+                  "
+                >
+
+                  {filteredProducts.map(
+                    prod => (
+
+                      <ProductCard
+                        key={prod.id}
+                        prod={prod}
+                      />
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </main>
+
+          )}
+
+
+          {tab === 'favorites' && (
+
+            <main className="p-4">
+
+              <h2
+                className="
+                  font-black
+                  mb-4
+                "
+              >
+                ❤️ Обране ({
+                  favoriteProducts.length
+                })
+              </h2>
+
+
+              {favoriteProducts.length ===
+              0 ? (
+
+                <div
+                  className="
+                    bg-[#00383e]
+                    border
+                    border-[#104b50]
+                    rounded-xl
+                    p-8
+                    text-center
+                    text-gray-300
+                  "
+                >
+                  Тут поки порожньо
+                </div>
+
+              ) : (
+
+                <div
+                  className="
+                    grid
+                    grid-cols-2
+                    gap-3
+                  "
+                >
+
+                  {favoriteProducts.map(
+                    prod => (
+
+                      <ProductCard
+                        key={prod.id}
+                        prod={prod}
+                        favoriteOnly
+                      />
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </main>
+
+          )}
+
+
+          {tab === 'add' && (
+
+            <main className="p-4">
+
+              <div
+                className="
+                  bg-[#00383e]
+                  border
+                  border-[#104b50]
+                  rounded-2xl
+                  p-5
+                "
+              >
+
+                <div
+                  className="
+                    flex
+                    justify-between
+                    items-center
+                    mb-5
+                  "
+                >
+
+                  <h2
+                    className="
+                      text-lg
+                      font-black
+                    "
+                  >
+                    {
+                      editingProductId
+                        ? '✏️ Редагування'
+                        : '➕ Нове оголошення'
+                    }
+                  </h2>
+
+
+                  {editingProductId && (
+
+                    <button
+                      type="button"
+                      onClick={resetForm}
+                      className="
+                        text-xs
+                        text-red-300
+                        font-bold
+                      "
+                    >
+                      Скасувати
+                    </button>
+
+                  )}
+
+                </div>
+
+
+                {initializing && (
+
+                  <div
+                    className="
+                      bg-amber-900/40
+                      border
+                      border-amber-700
+                      rounded-lg
+                      p-3
+                      text-xs
+                      mb-4
+                    "
+                  >
+                    ⏳ Завантажуємо профіль...
+                  </div>
+
+                )}
+
+
+                <form
+                  onSubmit={
+                    handleSaveProduct
+                  }
+                  className="space-y-4"
+                >
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Назва товару *
+                    </label>
+
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={event =>
+                        setTitle(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Наприклад: iPhone 13"
+                      className="
+                        w-full
+                        rounded-xl
+                        p-3
+                      "
+                    />
+
+                  </div>
+
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Ціна, ₴ *
+                    </label>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={price}
+                      onChange={event =>
+                        setPrice(
+                          event.target.value
+                        )
+                      }
+                      placeholder="300"
+                      className="
+                        w-full
+                        rounded-xl
+                        p-3
+                      "
+                    />
+
+                  </div>
+
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Стан товару
+                    </label>
+
+                    <select
+                      value={condition}
+                      onChange={event =>
+                        setCondition(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-full
+                        rounded-xl
+                        p-3
+                      "
+                    >
+                      <option value="used">
+                        👌 Вживаний
+                      </option>
+
+                      <option value="new">
+                        ✨ Новий
+                      </option>
+                    </select>
+
+                  </div>
+
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Категорія *
+                    </label>
+
+                    <select
+                      value={categoryId}
+                      onChange={event =>
+                        setCategoryId(
+                          event.target.value
+                        )
+                      }
+                      className="
+                        w-full
+                        rounded-xl
+                        p-3
+                      "
+                    >
+
+                      <option value="">
+                        Оберіть категорію
+                      </option>
+
+                      {categories.map(
+                        category => (
+
+                          <option
+                            key={
+                              category.id
+                            }
+                            value={
+                              category.id
+                            }
+                          >
+                            {
+                              category.title
+                            }
+                          </option>
+
+                        )
+                      )}
+
+                    </select>
+
+
+                    {categories.length ===
+                      0 && (
+
+                      <p
+                        className="
+                          text-xs
+                          text-amber-300
+                          mt-2
+                        "
+                      >
+                        Категорії ще не завантажилися.
+                      </p>
+
+                    )}
+
+                  </div>
+
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-2
+                      "
+                    >
+                      Фото ({
+                        existingImageUrls.length +
+                        imageFiles.length
+                      }/5)
+                    </label>
+
+
+                    <div
+                      className="
+                        flex
+                        gap-2
+                        overflow-x-auto
+                        no-scrollbar
+                      "
+                    >
+
+                      {existingImageUrls.map(
+                        (src, index) => (
+
+                          <div
+                            key={
+                              'existing-' +
+                              index
+                            }
+                            className="
+                              relative
+                              flex-shrink-0
+                              w-24
+                              h-28
+                              bg-gray-900
+                              rounded-xl
+                              overflow-hidden
+                            "
+                          >
+
+                            <img
+                              src={src}
+                              alt=""
+                              className="
+                                w-full
+                                h-full
+                                object-contain
+                              "
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeExistingImage(
+                                  index
+                                )
+                              }
+                              className="
+                                absolute
+                                top-1
+                                right-1
+                                bg-red-600
+                                w-6
+                                h-6
+                                rounded-full
+                                font-black
+                              "
+                            >
+                              ×
+                            </button>
+
+                          </div>
+
+                        )
+                      )}
+
+
+                      {imagePreviews.map(
+                        (src, index) => (
+
+                          <div
+                            key={
+                              'new-' +
+                              index
+                            }
+                            className="
+                              relative
+                              flex-shrink-0
+                              w-24
+                              h-28
+                              bg-gray-900
+                              rounded-xl
+                              overflow-hidden
+                            "
+                          >
+
+                            <img
+                              src={src}
+                              alt=""
+                              className="
+                                w-full
+                                h-full
+                                object-contain
+                              "
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeNewImage(
+                                  index
+                                )
+                              }
+                              className="
+                                absolute
+                                top-1
+                                right-1
+                                bg-red-600
+                                w-6
+                                h-6
+                                rounded-full
+                                font-black
+                              "
+                            >
+                              ×
+                            </button>
+
+                          </div>
+
+                        )
+                      )}
+
+
+                      {
+                        existingImageUrls.length +
+                        imageFiles.length <
+                        5 && (
+
+                        <label
+                          className="
+                            flex-shrink-0
+                            w-24
+                            h-28
+                            border-2
+                            border-dashed
+                            border-[#23e5bf]
+                            bg-[#00474e]
+                            rounded-xl
+                            flex
+                            flex-col
+                            items-center
+                            justify-center
+                          "
+                        >
+
+                          <span
+                            className="
+                              text-3xl
+                              text-[#23e5bf]
+                            "
+                          >
+                            +
+                          </span>
+
+                          <span
+                            className="
+                              text-xs
+                              font-bold
+                            "
+                          >
+                            Додати
+                          </span>
+
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={
+                              handleFilesAdd
+                            }
+                            className="hidden"
+                          />
+
+                        </label>
+
+                      )}
+
+                    </div>
+
+                  </div>
+
+
+                  <div>
+
+                    <label
+                      className="
+                        block
+                        text-xs
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Опис
+                    </label>
+
+                    <textarea
+                      rows="4"
+                      value={description}
+                      onChange={event =>
+                        setDescription(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Детальний опис товару..."
+                      className="
+                        w-full
+                        rounded-xl
+                        p-3
+                      "
+                    />
+
+                  </div>
+
+
+                  <button
+                    type="submit"
+                    disabled={
+                      isSubmitting ||
+                      initializing ||
+                      !currentDbUser?.id
+                    }
+                    className="
+                      w-full
+                      bg-[#23e5bf]
+                      text-[#002f34]
+                      font-black
+                      rounded-xl
+                      py-4
+                      disabled:opacity-40
+                    "
+                  >
+                    {
+                      isSubmitting
+                        ? 'Збереження...'
+                        : editingProductId
+                          ? 'Зберегти зміни'
+                          : 'Опублікувати'
+                    }
+                  </button>
+
+                </form>
+
+              </div>
+
+            </main>
+
+          )}
+
+
+          {tab === 'profile' && (
+
+            <main className="p-4">
+
+              <div
+                className="
+                  bg-[#00383e]
+                  border
+                  border-[#104b50]
+                  rounded-2xl
+                  p-4
+                  mb-4
+                "
+              >
+
+                <h2
+                  className="
+                    font-black
+                    text-lg
+                  "
+                >
+                  👤 Особистий кабінет
+                </h2>
+
+                <p
+                  className="
+                    text-xs
+                    text-gray-300
+                    mt-1
+                  "
+                >
+                  Ваших оголошень: {
+                    myProducts.length
+                  }
+                </p>
+
+              </div>
+
+
+              {myProducts.length ===
+              0 ? (
+
+                <div
+                  className="
+                    bg-[#00383e]
+                    border
+                    border-[#104b50]
+                    rounded-xl
+                    p-8
+                    text-center
+                    text-gray-300
+                  "
+                >
+                  У вас ще немає оголошень
+                </div>
+
+              ) : (
+
+                <div className="space-y-3">
+
+                  {myProducts.map(
+                    prod => (
+
+                      <div
+                        key={prod.id}
+                        className="
+                          bg-white
+                          text-[#002f34]
+                          rounded-xl
+                          p-3
+                          shadow
+                        "
+                      >
+
+                        <div
+                          className="
+                            flex
+                            gap-3
+                            items-center
+                          "
+                        >
+
+                          {prod.image_url ? (
+
+                            <img
+                              src={
+                                prod.image_url
+                              }
+                              alt=""
+                              className="
+                                w-16
+                                h-16
+                                object-cover
+                                rounded-lg
+                              "
+                            />
+
+                          ) : (
+
+                            <div
+                              className="
+                                w-16
+                                h-16
+                                bg-gray-100
+                                rounded-lg
+                                flex
+                                items-center
+                                justify-center
+                              "
+                            >
+                              🖼️
+                            </div>
+
+                          )}
+
+
+                          <div
+                            className="
+                              flex-1
+                              min-w-0
+                            "
+                          >
+
+                            <h3
+                              className="
+                                font-black
+                                text-sm
+                                truncate
+                              "
+                            >
+                              {prod.title}
+                            </h3>
+
+                            <div
+                              className="
+                                font-black
+                                mt-1
+                              "
+                            >
+                              {prod.price_uah} ₴
+                            </div>
+
+                            <div
+                              className="
+                                text-xs
+                                text-gray-500
+                              "
+                            >
+                              👁️ {
+                                prod.views_count ||
+                                0
+                              }
+                            </div>
+
+                          </div>
+
+                        </div>
+
+
+                        {isTop(prod) && (
+
+                          <div
+                            className="
+                              mt-2
+                              text-xs
+                              bg-amber-100
+                              text-amber-900
+                              font-black
+                              rounded-lg
+                              p-2
+                            "
+                          >
+                            ⭐ TOP активний до {
+                              new Date(
+                                prod.boosted_until
+                              )
+                                .toLocaleString(
+                                  'uk-UA'
+                                )
+                            }
+                          </div>
+
+                        )}
+
+
+                        <div
+                          className="
+                            grid
+                            grid-cols-2
+                            gap-2
+                            mt-3
+                          "
+                        >
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              startEditing(
+                                prod
+                              )
+                            }
+                            className="
+                              bg-blue-100
+                              text-blue-700
+                              font-bold
+                              rounded-lg
+                              py-2
+                              text-xs
+                            "
+                          >
+                            ✏️ Редагувати
+                          </button>
+
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleSoldStatus(
+                                prod
+                              )
+                            }
+                            className="
+                              bg-green-100
+                              text-green-800
+                              font-bold
+                              rounded-lg
+                              py-2
+                              text-xs
+                            "
+                          >
+                            {
+                              prod.is_sold
+                                ? 'Повернути в продаж'
+                                : '✅ Продано'
+                            }
+                          </button>
+
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              boostProduct(
+                                prod
+                              )
+                            }
+                            disabled={
+                              prod.is_sold ||
+                              boostingProductId ===
+                                prod.id
+                            }
+                            className="
+                              bg-amber-100
+                              text-amber-900
+                              font-black
+                              rounded-lg
+                              py-2
+                              text-xs
+                              disabled:opacity-40
+                            "
+                          >
+                            {
+                              boostingProductId ===
+                              prod.id
+                                ? '⏳ Зачекайте...'
+                                : '⭐ TOP — 50 ⭐'
+                            }
+                          </button>
+
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteProduct(
+                                prod
+                              )
+                            }
+                            className="
+                              bg-red-100
+                              text-red-700
+                              font-bold
+                              rounded-lg
+                              py-2
+                              text-xs
+                            "
+                          >
+                            🗑️ Видалити
+                          </button>
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </main>
+
+          )}
+
+
+          {selectedProduct && (
+
+            <div
+              className="
+                fixed
+                inset-0
+                bg-black/80
+                z-50
+                flex
+                items-end
+                justify-center
+              "
+            >
+
+              <div
+                className="
+                  bg-white
+                  text-[#002f34]
+                  w-full
+                  max-w-md
+                  max-h-[92vh]
+                  overflow-y-auto
+                  rounded-t-3xl
+                  p-5
+                  relative
+                "
+              >
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedProduct(
+                      null
+                    )
+                  }
+                  className="
+                    absolute
+                    top-4
+                    right-4
+                    z-20
+                    bg-gray-200
+                    rounded-full
+                    w-9
+                    h-9
+                    font-black
+                  "
+                >
+                  ×
+                </button>
+
+
+                {
+                  selectedProduct
+                    .product_images
+                    ?.length > 0
+                    ? (
+
+                  <div
+                    className="
+                      flex
+                      overflow-x-auto
+                      no-scrollbar
+                      snap-x
+                      rounded-2xl
+                      bg-gray-900
+                      h-80
+                      mb-4
+                    "
+                  >
+
+                    {
+                      selectedProduct
+                        .product_images
+                        .map(
+                          (
+                            image,
+                            index
+                          ) => (
+
+                        <div
+                          key={index}
+                          className="
+                            flex-shrink-0
+                            w-full
+                            h-full
+                            snap-center
+                            flex
+                            items-center
+                            justify-center
+                          "
+                        >
+
+                          <img
+                            src={
+                              image.image_url
+                            }
+                            alt=""
+                            className="
+                              max-w-full
+                              max-h-full
+                              object-contain
+                            "
+                          />
+
+                        </div>
+
+                      ))
+                    }
+
+                  </div>
+
+                ) : selectedProduct
+                    .image_url ? (
+
+                  <div
+                    className="
+                      h-80
+                      bg-gray-900
+                      rounded-2xl
+                      mb-4
+                      flex
+                      items-center
+                      justify-center
+                    "
+                  >
+
+                    <img
+                      src={
+                        selectedProduct
+                          .image_url
+                      }
+                      alt=""
+                      className="
+                        max-w-full
+                        max-h-full
+                        object-contain
+                      "
+                    />
+
+                  </div>
+
+                ) : (
+
+                  <div
+                    className="
+                      h-48
+                      bg-gray-100
+                      rounded-2xl
+                      mb-4
+                      flex
+                      items-center
+                      justify-center
+                      text-4xl
+                    "
+                  >
+                    🖼️
+                  </div>
+
+                )}
+
+
+                {isTop(
+                  selectedProduct
+                ) && (
+
+                  <span
+                    className="
+                      inline-block
+                      bg-amber-300
+                      font-black
+                      text-xs
+                      rounded
+                      px-2
+                      py-1
+                      mb-2
+                    "
+                  >
+                    ⭐ TOP
+                  </span>
+
+                )}
+
+
+                <div
+                  className="
+                    flex
+                    gap-2
+                    text-xs
+                    mb-2
+                  "
+                >
+
+                  <span
+                    className="
+                      bg-[#23e5bf]
+                      font-black
+                      px-2
+                      py-1
+                      rounded
+                    "
+                  >
+                    {
+                      selectedProduct
+                        .categories
+                        ?.title ||
+                      'Товар'
+                    }
+                  </span>
+
+                  <span
+                    className="
+                      text-gray-500
+                      font-bold
+                      py-1
+                    "
+                  >
+                    {
+                      selectedProduct
+                        .condition ===
+                      'new'
+                        ? '✨ Новий'
+                        : '👌 Вживаний'
+                    }
+                  </span>
+
+                </div>
+
+
+                <h2
+                  className="
+                    text-xl
+                    font-black
+                  "
+                >
+                  {
+                    selectedProduct.title
+                  }
+                </h2>
+
+
+                <div
+                  className="
+                    text-2xl
+                    font-black
+                    my-2
+                  "
+                >
+                  {
+                    selectedProduct
+                      .price_uah
+                  } ₴
+                </div>
+
+
+                {selectedProduct
+                  .description && (
+
+                  <div
+                    className="
+                      border-t
+                      mt-4
+                      pt-4
+                    "
+                  >
+
+                    <h3
+                      className="
+                        text-xs
+                        uppercase
+                        text-gray-500
+                        font-bold
+                        mb-1
+                      "
+                    >
+                      Опис
+                    </h3>
+
+                    <p
+                      className="
+                        text-sm
+                        whitespace-pre-line
+                      "
+                    >
+                      {
+                        selectedProduct
+                          .description
+                      }
+                    </p>
+
+                  </div>
+
+                )}
+
+
+                <div
+                  className="
+                    border-t
+                    mt-4
+                    pt-4
+                  "
+                >
+
+                  <div
+                    className="
+                      flex
+                      justify-between
+                      mb-3
+                    "
+                  >
+
+                    <b className="text-xs">
+                      Рейтинг продавця
+                    </b>
+
+                    <b
+                      className="
+                        text-xs
+                        text-amber-500
+                      "
+                    >
+                      ⭐ {
+                        avgRating ||
+                        'Немає оцінок'
+                      }
+                    </b>
+
+                  </div>
+
+
+                  {
+                    selectedProduct
+                      .users?.id !==
+                    currentDbUser?.id && (
+
+                    <form
+                      onSubmit={
+                        handleAddReview
+                      }
+                      className="
+                        bg-gray-100
+                        rounded-xl
+                        p-3
+                        space-y-2
+                      "
+                    >
+
+                      <select
+                        value={newRating}
+                        onChange={event =>
+                          setNewRating(
+                            event.target.value
+                          )
+                        }
+                        className="
+                          w-full
+                          rounded-lg
+                          p-2
+                          text-xs
+                        "
+                      >
+                        <option value="5">
+                          ⭐⭐⭐⭐⭐ 5
+                        </option>
+
+                        <option value="4">
+                          ⭐⭐⭐⭐ 4
+                        </option>
+
+                        <option value="3">
+                          ⭐⭐⭐ 3
+                        </option>
+
+                        <option value="2">
+                          ⭐⭐ 2
+                        </option>
+
+                        <option value="1">
+                          ⭐ 1
+                        </option>
+                      </select>
+
+
+                      <input
+                        type="text"
+                        placeholder="Ваш відгук..."
+                        value={
+                          newReviewComment
+                        }
+                        onChange={event =>
+                          setNewReviewComment(
+                            event.target.value
+                          )
+                        }
+                        className="
+                          w-full
+                          rounded-lg
+                          p-2
+                          text-xs
+                        "
+                      />
+
+
+                      <button
+                        type="submit"
+                        className="
+                          w-full
+                          bg-[#002f34]
+                          text-white
+                          py-2
+                          rounded-lg
+                          font-bold
+                          text-xs
+                        "
+                      >
+                        Залишити відгук
+                      </button>
+
+                    </form>
+
+                  )}
+
+
+                  <div
+                    className="
+                      space-y-2
+                      mt-3
+                    "
+                  >
+
+                    {sellerReviews.map(
+                      review => (
+
+                        <div
+                          key={review.id}
+                          className="
+                            bg-gray-50
+                            rounded-lg
+                            p-2
+                            text-xs
+                          "
+                        >
+
+                          <b
+                            className="
+                              text-amber-500
+                            "
+                          >
+                            {
+                              '⭐'.repeat(
+                                Number(
+                                  review.rating ||
+                                  0
+                                )
+                              )
+                            }
+                          </b>
+
+                          {review.comment && (
+
+                            <p className="mt-1">
+                              {review.comment}
+                            </p>
+
+                          )}
+
+                        </div>
+
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+
+
+                <div
+                  className="
+                    flex
+                    gap-2
+                    mt-5
+                  "
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openSellerChat(
+                        selectedProduct
+                          .users
+                          ?.username
+                      )
+                    }
+                    className="
+                      flex-1
+                      bg-[#002f34]
+                      text-[#23e5bf]
+                      font-black
+                      py-3
+                      rounded-xl
+                    "
+                  >
+                    💬 Написати
+                  </button>
+
+
+                  <button
+                    type="button"
+                    onClick={event =>
+                      toggleFavorite(
+                        selectedProduct,
+                        event
+                      )
+                    }
+                    className="
+                      bg-gray-100
+                      px-4
+                      rounded-xl
+                    "
+                  >
+                    {
+                      favoriteIds.includes(
+                        selectedProduct.id
+                      )
+                        ? '❤️'
+                        : '🤍'
+                    }
+                  </button>
+
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      shareProduct(
+                        selectedProduct
+                      )
+                    }
+                    className="
+                      bg-gray-100
+                      px-4
+                      rounded-xl
+                    "
+                  >
+                    🔗
+                  </button>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          )}
+
+
+          <nav
+            className="
+              fixed
+              bottom-0
+              left-0
+              right-0
+              max-w-md
+              mx-auto
+              bg-[#002f34]
+              border-t
+              border-[#104b50]
+              flex
+              justify-around
+              py-3
+              z-30
+            "
+          >
+
+            <button
+              type="button"
+              onClick={() =>
+                setTab('catalog')
+              }
+              className={
+                `flex flex-col items-center ` +
+                `text-xs font-bold ` +
+                (
+                  tab === 'catalog'
+                    ? 'text-[#23e5bf]'
+                    : 'text-gray-400'
+                )
+              }
+            >
+              <span className="text-xl">
+                🔍
+              </span>
+              Каталог
             </button>
-            <button onClick={() => setTab('favorites')} class={`flex flex-col items-center text-xs font-bold transition ${tab === 'favorites' ? 'text-[#23e5bf]' : 'text-gray-400'}`}>
-              <span class="text-base mb-0.5">❤️</span><span>Обране</span>
+
+
+            <button
+              type="button"
+              onClick={() =>
+                setTab('favorites')
+              }
+              className={
+                `flex flex-col items-center ` +
+                `text-xs font-bold ` +
+                (
+                  tab ===
+                  'favorites'
+                    ? 'text-[#23e5bf]'
+                    : 'text-gray-400'
+                )
+              }
+            >
+              <span className="text-xl">
+                ❤️
+              </span>
+              Обране
             </button>
-            <button onClick={() => setTab('add')} class={`flex flex-col items-center text-xs font-bold transition ${tab === 'add' ? 'text-[#23e5bf]' : 'text-gray-400'}`}>
-              <span class="text-base mb-0.5">➕</span><span>Подати</span>
+
+
+            <button
+              type="button"
+              onClick={() => {
+                resetForm();
+                setTab('add');
+              }}
+              className={
+                `flex flex-col items-center ` +
+                `text-xs font-bold ` +
+                (
+                  tab === 'add'
+                    ? 'text-[#23e5bf]'
+                    : 'text-gray-400'
+                )
+              }
+            >
+              <span className="text-xl">
+                ➕
+              </span>
+              Подати
             </button>
-            <button onClick={() => setTab('profile')} class={`flex flex-col items-center text-xs font-bold transition ${tab === 'profile' ? 'text-[#23e5bf]' : 'text-gray-400'}`}>
-              <span class="text-base mb-0.5">👤</span><span>Профіль</span>
+
+
+            <button
+              type="button"
+              onClick={() =>
+                setTab('profile')
+              }
+              className={
+                `flex flex-col items-center ` +
+                `text-xs font-bold ` +
+                (
+                  tab === 'profile'
+                    ? 'text-[#23e5bf]'
+                    : 'text-gray-400'
+                )
+              }
+            >
+              <span className="text-xl">
+                👤
+              </span>
+              Профіль
             </button>
+
           </nav>
+
         </div>
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+    ReactDOM
+      .createRoot(
+        document.getElementById(
+          'root'
+        )
+      )
+      .render(
+        <App />
+      );
+
   </script>
 </body>
 </html>
