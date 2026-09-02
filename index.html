@@ -8,7 +8,7 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   >
 
-  <title>OLX Mini App</title>
+  <title>Marketplace</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -57,6 +57,10 @@
       -webkit-text-fill-color: #64748b !important;
     }
 
+    button {
+      -webkit-tap-highlight-color: transparent;
+    }
+
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -64,10 +68,6 @@
     .no-scrollbar {
       scrollbar-width: none;
       -ms-overflow-style: none;
-    }
-
-    button {
-      -webkit-tap-highlight-color: transparent;
     }
 
     .line-clamp-2 {
@@ -80,19 +80,26 @@
 </head>
 
 <body>
+
 <div id="root"></div>
 
 <script type="text/babel">
 
+/* =========================================================
+   SUPABASE
+========================================================= */
+
 const SUPABASE_URL =
   'https://dhjrvpnbeapybgomwelc.supabase.co';
 
+
 /*
-  СЮДИ ЗАЛИШ СВІЙ ТЕПЕРІШНІЙ РОБОЧИЙ
+  ВСТАВ СЮДИ СВІЙ ТЕПЕРІШНІЙ РОБОЧИЙ
   PUBLISHABLE / ANON KEY.
 */
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoanJ2cG5iZWFweWJnb213ZWxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDk1NzMsImV4cCI6MjEwMzc4NTU3M30.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
+
 
 const supabaseClient =
   supabase.createClient(
@@ -100,18 +107,57 @@ const supabaseClient =
     SUPABASE_ANON_KEY
   );
 
+
 const tg =
   window.Telegram?.WebApp;
 
 
+/* =========================================================
+   ОБЛАСТІ
+========================================================= */
+
+const REGIONS = [
+  'Вінницька область',
+  'Волинська область',
+  'Дніпропетровська область',
+  'Донецька область',
+  'Житомирська область',
+  'Закарпатська область',
+  'Запорізька область',
+  'Івано-Франківська область',
+  'Київська область',
+  'Кіровоградська область',
+  'Луганська область',
+  'Львівська область',
+  'Миколаївська область',
+  'Одеська область',
+  'Полтавська область',
+  'Рівненська область',
+  'Сумська область',
+  'Тернопільська область',
+  'Харківська область',
+  'Херсонська область',
+  'Хмельницька область',
+  'Черкаська область',
+  'Чернівецька область',
+  'Чернігівська область',
+  'м. Київ'
+];
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function sleep(ms) {
-  return new Promise(
-    resolve => setTimeout(resolve, ms)
+  return new Promise(resolve =>
+    setTimeout(resolve, ms)
   );
 }
 
 
 function errorText(error) {
+
   if (!error) {
     return 'Невідома помилка';
   }
@@ -127,11 +173,35 @@ function errorText(error) {
 }
 
 
+function formatDate(date) {
+
+  if (!date) {
+    return '';
+  }
+
+  try {
+
+    return new Date(date)
+      .toLocaleDateString(
+        'uk-UA'
+      );
+
+  } catch {
+
+    return '';
+  }
+}
+
+
+/* =========================================================
+   APP
+========================================================= */
+
 function App() {
 
-  /* ========================================
-     ОСНОВНІ ДАНІ
-  ======================================== */
+  /* =========================
+     CORE
+  ========================= */
 
   const [products, setProducts] =
     React.useState([]);
@@ -145,9 +215,6 @@ function App() {
   const [loading, setLoading] =
     React.useState(true);
 
-  const [initializing, setInitializing] =
-    React.useState(true);
-
   const [appError, setAppError] =
     React.useState('');
 
@@ -158,15 +225,38 @@ function App() {
     React.useState(null);
 
 
-  /* ========================================
-     ПОШУК / ФІЛЬТРИ
-  ======================================== */
+  /* =========================
+     SELLER PAGE
+  ========================= */
+
+  const [selectedSeller, setSelectedSeller] =
+    React.useState(null);
+
+  const [sellerProducts, setSellerProducts] =
+    React.useState([]);
+
+  const [sellerReviews, setSellerReviews] =
+    React.useState([]);
+
+  const [sellerLoading, setSellerLoading] =
+    React.useState(false);
+
+
+  /* =========================
+     SEARCH / FILTER
+  ========================= */
 
   const [searchQuery, setSearchQuery] =
     React.useState('');
 
   const [selectedCategory, setSelectedCategory] =
     React.useState(null);
+
+  const [filterRegion, setFilterRegion] =
+    React.useState('');
+
+  const [filterCity, setFilterCity] =
+    React.useState('');
 
   const [minPrice, setMinPrice] =
     React.useState('');
@@ -184,17 +274,17 @@ function App() {
     React.useState(false);
 
 
-  /* ========================================
-     ОБРАНЕ
-  ======================================== */
+  /* =========================
+     FAVORITES
+  ========================= */
 
   const [favoriteIds, setFavoriteIds] =
     React.useState([]);
 
 
-  /* ========================================
-     ФОРМА ОГОЛОШЕННЯ
-  ======================================== */
+  /* =========================
+     PRODUCT FORM
+  ========================= */
 
   const [editingProductId, setEditingProductId] =
     React.useState(null);
@@ -214,6 +304,12 @@ function App() {
   const [categoryId, setCategoryId] =
     React.useState('');
 
+  const [region, setRegion] =
+    React.useState('');
+
+  const [city, setCity] =
+    React.useState('');
+
   const [imageFiles, setImageFiles] =
     React.useState([]);
 
@@ -227,12 +323,9 @@ function App() {
     React.useState(false);
 
 
-  /* ========================================
+  /* =========================
      REVIEWS
-  ======================================== */
-
-  const [sellerReviews, setSellerReviews] =
-    React.useState([]);
+  ========================= */
 
   const [newRating, setNewRating] =
     React.useState(5);
@@ -241,17 +334,17 @@ function App() {
     React.useState('');
 
 
-  /* ========================================
+  /* =========================
      TOP
-  ======================================== */
+  ========================= */
 
   const [boostingProductId, setBoostingProductId] =
     React.useState(null);
 
 
-  /* ========================================
-     СКАРГИ
-  ======================================== */
+  /* =========================
+     REPORT
+  ========================= */
 
   const [showReportModal, setShowReportModal] =
     React.useState(false);
@@ -266,9 +359,9 @@ function App() {
     React.useState(false);
 
 
-  /* ========================================
-     АДМІН
-  ======================================== */
+  /* =========================
+     ADMIN
+  ========================= */
 
   const [adminSection, setAdminSection] =
     React.useState('moderation');
@@ -285,10 +378,13 @@ function App() {
   const [adminLoading, setAdminLoading] =
     React.useState(false);
 
+  const [secureLoading, setSecureLoading] =
+    React.useState(false);
 
-  /* ========================================
+
+  /* =========================
      TELEGRAM USER
-  ======================================== */
+  ========================= */
 
   const currentUser =
     tg?.initDataUnsafe?.user || {
@@ -298,18 +394,18 @@ function App() {
     };
 
 
-  /* ========================================
+  /* =========================================================
      START
-  ======================================== */
+  ========================================================= */
 
   React.useEffect(() => {
 
     try {
+
       tg?.ready();
       tg?.expand();
-    } catch (e) {
-      console.log(e);
-    }
+
+    } catch {}
 
     initApp();
 
@@ -318,7 +414,6 @@ function App() {
 
   async function initApp() {
 
-    setInitializing(true);
     setLoading(true);
     setAppError('');
 
@@ -330,48 +425,115 @@ function App() {
         await ensureDatabaseUser();
 
       if (!dbUser?.id) {
+
         throw new Error(
-          'Supabase не повернув ID користувача.'
+          'Не вдалося створити профіль.'
         );
       }
 
-      setCurrentDbUser(dbUser);
+      setCurrentDbUser(
+        dbUser
+      );
 
       await Promise.all([
         fetchProducts(),
-        fetchFavorites(dbUser.id)
+        fetchFavorites(
+          dbUser.id
+        )
       ]);
 
     } catch (error) {
 
       console.error(
-        'INIT ERROR',
         error
       );
 
       setAppError(
-        error?.message ||
-        String(error)
+        errorText(error)
       );
 
     } finally {
 
-      setInitializing(false);
       setLoading(false);
 
     }
   }
 
 
-  /* ========================================
+  /* =========================================================
+     SECURE EDGE FUNCTION
+  ========================================================= */
+
+  async function secureAction(
+    action,
+    extra = {}
+  ) {
+
+    /*
+      Важливо:
+      передаємо саме tg.initData,
+      а НЕ initDataUnsafe.
+    */
+
+    if (!tg?.initData) {
+
+      throw new Error(
+        'Telegram initData відсутній. Відкрий Mini App через Telegram-бота.'
+      );
+    }
+
+
+    const {
+      data,
+      error
+    } =
+      await supabaseClient
+        .functions
+        .invoke(
+          'marketplace-secure',
+          {
+            body: {
+              initData:
+                tg.initData,
+
+              action,
+
+              ...extra
+            }
+          }
+        );
+
+
+    if (error) {
+
+      throw new Error(
+        error.message ||
+        'Помилка захищеної функції'
+      );
+    }
+
+
+    if (data?.error) {
+
+      throw new Error(
+        data.error
+      );
+    }
+
+
+    return data;
+  }
+
+
+  /* =========================================================
      USER
-  ======================================== */
+  ========================================================= */
 
   async function ensureDatabaseUser() {
 
     const {
-      data: existingUser,
-      error: selectError
+      data: existing,
+      error
     } =
       await supabaseClient
         .from('users')
@@ -383,50 +545,58 @@ function App() {
         .maybeSingle();
 
 
-    if (selectError) {
+    if (error) {
+
       throw new Error(
         'Не вдалося прочитати користувача:\n' +
-        errorText(selectError)
+        errorText(error)
       );
     }
 
 
-    if (existingUser?.id) {
+    if (existing) {
 
       const updates = {};
 
       if (
         currentUser.username &&
         currentUser.username !==
-        existingUser.username
+        existing.username
       ) {
+
         updates.username =
           currentUser.username;
       }
 
+
       if (
         currentUser.first_name &&
         currentUser.first_name !==
-        existingUser.first_name
+        existing.first_name
       ) {
+
         updates.first_name =
           currentUser.first_name;
       }
 
+
       if (
         currentUser.last_name &&
         currentUser.last_name !==
-        existingUser.last_name
+        existing.last_name
       ) {
+
         updates.last_name =
           currentUser.last_name;
       }
 
+
       if (
         currentUser.photo_url &&
         currentUser.photo_url !==
-        existingUser.photo_url
+        existing.photo_url
       ) {
+
         updates.photo_url =
           currentUser.photo_url;
       }
@@ -437,51 +607,32 @@ function App() {
       ) {
 
         const {
-          data: updatedUser
+          data: updated,
+          error: updateError
         } =
           await supabaseClient
             .from('users')
             .update(updates)
             .eq(
               'id',
-              existingUser.id
+              existing.id
             )
             .select('*')
             .maybeSingle();
 
-        return (
-          updatedUser ||
-          existingUser
-        );
+
+        if (
+          !updateError &&
+          updated
+        ) {
+
+          return updated;
+        }
       }
 
 
-      return existingUser;
+      return existing;
     }
-
-
-    const newUserData = {
-
-      telegram_id:
-        currentUser.id,
-
-      username:
-        currentUser.username ||
-        `user_${currentUser.id}`,
-
-      first_name:
-        currentUser.first_name ||
-        'Користувач',
-
-      last_name:
-        currentUser.last_name ||
-        null,
-
-      photo_url:
-        currentUser.photo_url ||
-        null
-
-    };
 
 
     const {
@@ -491,15 +642,35 @@ function App() {
       await supabaseClient
         .from('users')
         .insert([
-          newUserData
+          {
+            telegram_id:
+              currentUser.id,
+
+            username:
+              currentUser.username ||
+              `user_${currentUser.id}`,
+
+            first_name:
+              currentUser.first_name ||
+              'Користувач',
+
+            last_name:
+              currentUser.last_name ||
+              null,
+
+            photo_url:
+              currentUser.photo_url ||
+              null
+          }
         ])
         .select('*')
         .single();
 
 
     if (insertError) {
+
       throw new Error(
-        'Не вдалося створити профіль:\n' +
+        'Не вдалося створити користувача:\n' +
         errorText(insertError)
       );
     }
@@ -526,14 +697,17 @@ function App() {
 
 
     if (!error && data) {
-      setCurrentDbUser(data);
+
+      setCurrentDbUser(
+        data
+      );
     }
   }
 
 
-  /* ========================================
+  /* =========================================================
      CATEGORIES
-  ======================================== */
+  ========================================================= */
 
   async function fetchCategories() {
 
@@ -556,11 +730,6 @@ function App() {
 
     if (error) {
 
-      console.error(
-        'CATEGORIES',
-        error
-      );
-
       throw new Error(
         'Не вдалося завантажити категорії:\n' +
         errorText(error)
@@ -574,14 +743,11 @@ function App() {
   }
 
 
-  /* ========================================
+  /* =========================================================
      PRODUCTS
-  ======================================== */
+  ========================================================= */
 
   async function fetchProducts() {
-
-    setLoading(true);
-
 
     const {
       data,
@@ -622,14 +788,11 @@ function App() {
     if (error) {
 
       console.error(
-        'PRODUCTS',
         error
       );
 
-      setLoading(false);
-
       alert(
-        'Помилка завантаження товарів:\n\n' +
+        'Помилка товарів:\n' +
         errorText(error)
       );
 
@@ -640,21 +803,16 @@ function App() {
     setProducts(
       data || []
     );
-
-    setLoading(false);
   }
 
 
-  /* ========================================
+  /* =========================================================
      FAVORITES
-  ======================================== */
+  ========================================================= */
 
-  async function fetchFavorites(userId) {
-
-    if (!userId) {
-      return;
-    }
-
+  async function fetchFavorites(
+    userId
+  ) {
 
     const {
       data,
@@ -671,21 +829,16 @@ function App() {
         );
 
 
-    if (error) {
-      console.error(
-        'FAVORITES',
-        error
+    if (!error) {
+
+      setFavoriteIds(
+        (data || [])
+          .map(
+            item =>
+              item.product_id
+          )
       );
-      return;
     }
-
-
-    setFavoriteIds(
-      (data || []).map(
-        item =>
-          item.product_id
-      )
-    );
   }
 
 
@@ -782,113 +935,231 @@ function App() {
   }
 
 
-  /* ========================================
+  /* =========================================================
      PRODUCT DETAILS
-  ======================================== */
+  ========================================================= */
 
   async function openProductDetails(
     prod
   ) {
 
-    setSelectedProduct(prod);
-
-    setSellerReviews([]);
+    setSelectedProduct(
+      prod
+    );
 
 
     const newViews =
       Number(
-        prod.views_count || 0
+        prod.views_count ||
+        0
       ) + 1;
 
 
     try {
 
-      const {
-        error
-      } =
-        await supabaseClient
-          .from('products')
-          .update({
-            views_count:
-              newViews
-          })
-          .eq(
-            'id',
-            prod.id
-          );
+      await supabaseClient
+        .from('products')
+        .update({
+          views_count:
+            newViews
+        })
+        .eq(
+          'id',
+          prod.id
+        );
 
 
-      if (!error) {
-
-        setProducts(
-          prev =>
-            prev.map(
-              item =>
-                item.id ===
-                prod.id
-
+      setProducts(
+        prev =>
+          prev.map(
+            item =>
+              item.id === prod.id
                 ? {
                     ...item,
                     views_count:
                       newViews
                   }
-
                 : item
-            )
-        );
+          )
+      );
 
 
-        setSelectedProduct(
-          prev =>
-            prev
-              ? {
-                  ...prev,
-                  views_count:
-                    newViews
-                }
-              : prev
-        );
-      }
+      setSelectedProduct(
+        prev =>
+          prev
+            ? {
+                ...prev,
+                views_count:
+                  newViews
+              }
+            : prev
+      );
 
     } catch {}
+  }
 
 
-    if (prod.users?.id) {
+  /* =========================================================
+     SELLER PAGE
+  ========================================================= */
 
-      const {
-        data,
-        error
-      } =
-        await supabaseClient
-          .from('reviews')
-          .select('*')
-          .eq(
-            'seller_id',
-            prod.users.id
-          )
-          .order(
-            'created_at',
-            {
-              ascending: false
-            }
+  async function openSellerPage(
+    seller
+  ) {
+
+    if (!seller?.id) {
+      return;
+    }
+
+
+    setSelectedProduct(
+      null
+    );
+
+    setSelectedSeller(
+      seller
+    );
+
+    setSellerLoading(
+      true
+    );
+
+    setSellerProducts([]);
+
+    setSellerReviews([]);
+
+
+    try {
+
+      const [
+        productsResult,
+        reviewsResult
+      ] =
+        await Promise.all([
+
+          supabaseClient
+            .from('products')
+            .select(`
+              *,
+              categories(
+                id,
+                title,
+                slug
+              ),
+              users(
+                id,
+                telegram_id,
+                username,
+                first_name,
+                last_name,
+                photo_url,
+                is_verified
+              ),
+              product_images(
+                image_url
+              )
+            `)
+            .eq(
+              'user_id',
+              seller.id
+            )
+            .eq(
+              'moderation_status',
+              'approved'
+            )
+            .eq(
+              'is_sold',
+              false
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            ),
+
+          supabaseClient
+            .from('reviews')
+            .select('*')
+            .eq(
+              'seller_id',
+              seller.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            )
+
+        ]);
+
+
+      const activeProducts =
+        (
+          productsResult.data ||
+          []
+        )
+          .filter(
+            prod =>
+              !isExpired(
+                prod
+              )
           );
 
 
-      if (!error) {
+      setSellerProducts(
+        activeProducts
+      );
 
-        setSellerReviews(
-          data || []
-        );
-      }
+
+      setSellerReviews(
+        reviewsResult.data ||
+        []
+      );
+
+    } catch (error) {
+
+      alert(
+        errorText(error)
+      );
+
+    } finally {
+
+      setSellerLoading(
+        false
+      );
     }
   }
 
 
-  /* ========================================
-     IMAGES
-  ======================================== */
+  const sellerAverageRating =
+    sellerReviews.length
+      ? (
+          sellerReviews.reduce(
+            (
+              total,
+              review
+            ) =>
+              total +
+              Number(
+                review.rating ||
+                0
+              ),
+            0
+          ) /
+          sellerReviews.length
+        ).toFixed(1)
+      : null;
 
-  function handleFilesAdd(event) {
+
+  /* =========================================================
+     IMAGES
+  ========================================================= */
+
+  function handleFilesAdd(
+    event
+  ) {
 
     const selected =
       Array.from(
@@ -909,7 +1180,8 @@ function App() {
         'Максимум 5 фото.'
       );
 
-      event.target.value = '';
+      event.target.value =
+        '';
 
       return;
     }
@@ -936,11 +1208,14 @@ function App() {
     );
 
 
-    event.target.value = '';
+    event.target.value =
+      '';
   }
 
 
-  function removeExistingImage(index) {
+  function removeExistingImage(
+    index
+  ) {
 
     setExistingImageUrls(
       prev =>
@@ -952,18 +1227,25 @@ function App() {
   }
 
 
-  function removeNewImage(index) {
+  function removeNewImage(
+    index
+  ) {
 
-    const src =
-      imagePreviews[index];
+    const preview =
+      imagePreviews[
+        index
+      ];
 
 
     try {
-      if (src) {
+
+      if (preview) {
+
         URL.revokeObjectURL(
-          src
+          preview
         );
       }
+
     } catch {}
 
 
@@ -1039,7 +1321,7 @@ function App() {
       if (error) {
 
         throw new Error(
-          'Помилка завантаження фото:\n' +
+          'Помилка фото:\n' +
           errorText(error)
         );
       }
@@ -1061,6 +1343,7 @@ function App() {
       if (
         data?.publicUrl
       ) {
+
         uploaded.push(
           data.publicUrl
         );
@@ -1072,34 +1355,45 @@ function App() {
   }
 
 
-  /* ========================================
-     PRODUCT FORM
-  ======================================== */
+  /* =========================================================
+     FORM
+  ========================================================= */
 
   function resetForm() {
 
     imagePreviews.forEach(
-      src => {
+      preview => {
+
         try {
+
           URL.revokeObjectURL(
-            src
+            preview
           );
+
         } catch {}
       }
     );
 
 
-    setEditingProductId(null);
+    setEditingProductId(
+      null
+    );
 
     setTitle('');
 
     setPrice('');
 
-    setCondition('used');
+    setCondition(
+      'used'
+    );
 
     setDescription('');
 
     setCategoryId('');
+
+    setRegion('');
+
+    setCity('');
 
     setImageFiles([]);
 
@@ -1109,7 +1403,9 @@ function App() {
   }
 
 
-  function startEditing(prod) {
+  function startEditing(
+    prod
+  ) {
 
     let urls =
       (
@@ -1117,8 +1413,8 @@ function App() {
         []
       )
         .map(
-          item =>
-            item.image_url
+          image =>
+            image.image_url
         )
         .filter(Boolean);
 
@@ -1164,15 +1460,30 @@ function App() {
         : ''
     );
 
+    setRegion(
+      prod.region ||
+      ''
+    );
+
+    setCity(
+      prod.city ||
+      ''
+    );
+
     setImageFiles([]);
 
     setImagePreviews([]);
 
     setExistingImageUrls(
-      urls.slice(0, 5)
+      urls.slice(
+        0,
+        5
+      )
     );
 
-    setTab('add');
+    setTab(
+      'add'
+    );
   }
 
 
@@ -1186,14 +1497,16 @@ function App() {
     if (!currentDbUser?.id) {
 
       alert(
-        'Профіль ще не завантажено.'
+        'Профіль не завантажений.'
       );
 
       return;
     }
 
 
-    if (currentDbUser.is_banned) {
+    if (
+      currentDbUser.is_banned
+    ) {
 
       alert(
         'Ваш акаунт заблоковано.'
@@ -1206,7 +1519,7 @@ function App() {
     if (!title.trim()) {
 
       alert(
-        'Вкажіть назву товару.'
+        'Вкажіть назву.'
       );
 
       return;
@@ -1217,6 +1530,26 @@ function App() {
 
       alert(
         'Оберіть категорію.'
+      );
+
+      return;
+    }
+
+
+    if (!region) {
+
+      alert(
+        'Оберіть область.'
+      );
+
+      return;
+    }
+
+
+    if (!city.trim()) {
+
+      alert(
+        'Вкажіть місто.'
       );
 
       return;
@@ -1242,7 +1575,9 @@ function App() {
     }
 
 
-    setIsSubmitting(true);
+    setIsSubmitting(
+      true
+    );
 
 
     try {
@@ -1257,15 +1592,13 @@ function App() {
           ...uploaded
         ]
           .filter(Boolean)
-          .slice(0, 5);
+          .slice(
+            0,
+            5
+          );
 
 
-      const mainImage =
-        finalImages[0] ||
-        null;
-
-
-      const basePayload = {
+      const payload = {
 
         title:
           title.trim(),
@@ -1279,11 +1612,18 @@ function App() {
           description.trim(),
 
         category_id:
-          Number(categoryId),
+          Number(
+            categoryId
+          ),
+
+        region,
+
+        city:
+          city.trim(),
 
         image_url:
-          mainImage
-
+          finalImages[0] ||
+          null
       };
 
 
@@ -1291,18 +1631,13 @@ function App() {
         editingProductId
       ) {
 
-        /*
-          Після редагування повертаємо
-          оголошення на модерацію.
-        */
-
         const {
           error
         } =
           await supabaseClient
             .from('products')
             .update({
-              ...basePayload,
+              ...payload,
 
               moderation_status:
                 'pending',
@@ -1329,10 +1664,12 @@ function App() {
 
 
         const {
-          error: deleteGalleryError
+          error: deleteError
         } =
           await supabaseClient
-            .from('product_images')
+            .from(
+              'product_images'
+            )
             .delete()
             .eq(
               'product_id',
@@ -1340,10 +1677,9 @@ function App() {
             );
 
 
-        if (
-          deleteGalleryError
-        ) {
-          throw deleteGalleryError;
+        if (deleteError) {
+
+          throw deleteError;
         }
 
 
@@ -1360,30 +1696,31 @@ function App() {
               )
               .insert(
                 finalImages.map(
-                  url => ({
+                  imageUrl => ({
                     product_id:
                       editingProductId,
 
                     image_url:
-                      url
+                      imageUrl
                   })
                 )
               );
 
 
           if (galleryError) {
+
             throw galleryError;
           }
         }
 
 
         alert(
-          '✏️ Оголошення оновлено та відправлено на повторну модерацію.'
+          '✏️ Оголошення оновлено та відправлено на модерацію.'
         );
 
       } else {
 
-        const expires =
+        const expiresAt =
           new Date(
             Date.now() +
             30 *
@@ -1391,7 +1728,8 @@ function App() {
             60 *
             60 *
             1000
-          ).toISOString();
+          )
+            .toISOString();
 
 
         const {
@@ -1402,7 +1740,7 @@ function App() {
             .from('products')
             .insert([
               {
-                ...basePayload,
+                ...payload,
 
                 user_id:
                   currentDbUser.id,
@@ -1411,7 +1749,7 @@ function App() {
                   'pending',
 
                 expires_at:
-                  expires
+                  expiresAt
               }
             ])
             .select('*')
@@ -1436,25 +1774,26 @@ function App() {
               )
               .insert(
                 finalImages.map(
-                  url => ({
+                  imageUrl => ({
                     product_id:
                       newProduct.id,
 
                     image_url:
-                      url
+                      imageUrl
                   })
                 )
               );
 
 
           if (galleryError) {
+
             throw galleryError;
           }
         }
 
 
         alert(
-          '🎉 Оголошення створено та відправлено на модерацію.'
+          '🎉 Оголошення відправлено на модерацію.'
         );
       }
 
@@ -1463,42 +1802,33 @@ function App() {
 
       await fetchProducts();
 
-      setTab('profile');
-
+      setTab(
+        'profile'
+      );
 
     } catch (error) {
 
-      console.error(
-        'SAVE',
-        error
-      );
-
-
       alert(
-        'Помилка збереження:\n\n' +
+        'Помилка:\n' +
         errorText(error)
       );
 
     } finally {
 
-      setIsSubmitting(false);
-
+      setIsSubmitting(
+        false
+      );
     }
   }
 
 
-  /* ========================================
+  /* =========================================================
      PRODUCT STATUS
-  ======================================== */
+  ========================================================= */
 
   async function toggleSoldStatus(
     prod
   ) {
-
-    if (!currentDbUser?.id) {
-      return;
-    }
-
 
     const {
       error
@@ -1542,6 +1872,7 @@ function App() {
         'Видалити оголошення?'
       )
     ) {
+
       return;
     }
 
@@ -1580,7 +1911,7 @@ function App() {
     prod
   ) {
 
-    const newExpiry =
+    const expiresAt =
       new Date(
         Date.now() +
         30 *
@@ -1588,7 +1919,8 @@ function App() {
         60 *
         60 *
         1000
-      ).toISOString();
+      )
+        .toISOString();
 
 
     const {
@@ -1598,7 +1930,10 @@ function App() {
         .from('products')
         .update({
           expires_at:
-            newExpiry,
+            expiresAt,
+
+          expiry_warning_sent_at:
+            null,
 
           moderation_status:
             'pending',
@@ -1627,7 +1962,7 @@ function App() {
 
 
     alert(
-      '🔄 Оголошення продовжено ще на 30 днів і відправлено на модерацію.'
+      '🔄 Продовжено на 30 днів.'
     );
 
 
@@ -1635,9 +1970,9 @@ function App() {
   }
 
 
-  /* ========================================
+  /* =========================================================
      REVIEWS
-  ======================================== */
+  ========================================================= */
 
   async function handleAddReview(
     event
@@ -1651,6 +1986,7 @@ function App() {
         ?.users?.id ||
       !currentDbUser?.id
     ) {
+
       return;
     }
 
@@ -1705,49 +2041,95 @@ function App() {
     }
 
 
-    setNewReviewComment('');
+    setNewReviewComment(
+      ''
+    );
 
 
-    const {
-      data
-    } =
-      await supabaseClient
-        .from('reviews')
-        .select('*')
-        .eq(
-          'seller_id',
-          selectedProduct
-            .users.id
-        )
-        .order(
-          'created_at',
-          {
-            ascending: false
-          }
-        );
-
-
-    setSellerReviews(
-      data || []
+    alert(
+      '⭐ Відгук додано.'
     );
   }
 
 
-  /* ========================================
-     REPORTS
-  ======================================== */
+  /* =========================================================
+     VERIFICATION
+  ========================================================= */
 
-  function openReportModal() {
+  async function requestVerification() {
 
-    if (!currentDbUser?.id) {
+    if (
+      currentDbUser
+        ?.is_verified
+    ) {
+
+      alert(
+        'Ви вже верифіковані.'
+      );
+
       return;
     }
 
 
     if (
+      currentDbUser
+        ?.verification_status ===
+      'pending'
+    ) {
+
+      alert(
+        'Заявка вже розглядається.'
+      );
+
+      return;
+    }
+
+
+    setSecureLoading(
+      true
+    );
+
+
+    try {
+
+      await secureAction(
+        'request_verification'
+      );
+
+
+      alert(
+        '✅ Заявку відправлено.'
+      );
+
+
+      await reloadCurrentUser();
+
+    } catch (error) {
+
+      alert(
+        'Помилка верифікації:\n' +
+        errorText(error)
+      );
+
+    } finally {
+
+      setSecureLoading(
+        false
+      );
+    }
+  }
+
+
+  /* =========================================================
+     REPORTS
+  ========================================================= */
+
+  function openReportModal() {
+
+    if (
       selectedProduct
         ?.user_id ===
-      currentDbUser.id
+      currentDbUser?.id
     ) {
 
       alert(
@@ -1762,7 +2144,9 @@ function App() {
       'fraud'
     );
 
-    setReportDetails('');
+    setReportDetails(
+      ''
+    );
 
     setShowReportModal(
       true
@@ -1776,6 +2160,7 @@ function App() {
       !selectedProduct?.id ||
       !currentDbUser?.id
     ) {
+
       return;
     }
 
@@ -1815,13 +2200,9 @@ function App() {
 
 
       if (error) {
+
         throw error;
       }
-
-
-      alert(
-        '⚠️ Скаргу надіслано адміністрації.'
-      );
 
 
       setShowReportModal(
@@ -1829,10 +2210,13 @@ function App() {
       );
 
 
+      alert(
+        '⚠️ Скаргу відправлено.'
+      );
+
     } catch (error) {
 
       alert(
-        'Помилка скарги:\n' +
         errorText(error)
       );
 
@@ -1841,110 +2225,35 @@ function App() {
       setSendingReport(
         false
       );
-
     }
   }
 
 
-  /* ========================================
-     VERIFICATION
-  ======================================== */
-
-  async function requestVerification() {
-
-    if (!currentDbUser?.id) {
-      return;
-    }
-
-
-    if (
-      currentDbUser
-        .is_verified
-    ) {
-
-      alert(
-        'Ваш профіль уже верифікований.'
-      );
-
-      return;
-    }
-
-
-    if (
-      currentDbUser
-        .verification_status ===
-      'pending'
-    ) {
-
-      alert(
-        'Ваша заявка вже очікує перевірки.'
-      );
-
-      return;
-    }
-
-
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('users')
-        .update({
-          verification_status:
-            'pending',
-
-          verification_requested_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          currentDbUser.id
-        );
-
-
-    if (error) {
-
-      alert(
-        errorText(error)
-      );
-
-      return;
-    }
-
-
-    alert(
-      '✅ Заявку на верифікацію надіслано.'
-    );
-
-
-    await reloadCurrentUser();
-  }
-
-
-  /* ========================================
+  /* =========================================================
      TOP
-  ======================================== */
+  ========================================================= */
 
-  function isTop(prod) {
+  function isTop(
+    prod
+  ) {
 
     return Boolean(
       prod.boosted_until &&
       new Date(
         prod.boosted_until
-      ) > new Date()
+      ) >
+      new Date()
     );
   }
 
 
   async function waitForBoost(
-    productId,
-    attempts = 10
+    productId
   ) {
 
     for (
       let i = 0;
-      i < attempts;
+      i < 10;
       i++
     ) {
 
@@ -1975,7 +2284,9 @@ function App() {
       }
 
 
-      await sleep(1500);
+      await sleep(
+        1500
+      );
     }
 
 
@@ -1986,15 +2297,6 @@ function App() {
   async function boostProduct(
     prod
   ) {
-
-    if (
-      prod.is_sold ||
-      isExpired(prod)
-    ) {
-
-      return;
-    }
-
 
     setBoostingProductId(
       prod.id
@@ -2036,41 +2338,32 @@ function App() {
       }
 
 
-      window.Telegram
-        ?.WebApp
-        ?.openInvoice(
-          data.invoiceLink,
-          async status => {
+      tg?.openInvoice(
+        data.invoiceLink,
+        async status => {
 
-            if (
-              status ===
-              'paid'
-            ) {
+          if (
+            status ===
+            'paid'
+          ) {
 
-              const ok =
-                await waitForBoost(
-                  prod.id
-                );
+            await waitForBoost(
+              prod.id
+            );
 
+            await fetchProducts();
 
-              await fetchProducts();
-
-
-              alert(
-                ok
-                  ? '⭐ TOP активовано на 3 дні.'
-                  : 'Оплата пройшла. TOP активується через кілька секунд.'
-              );
-            }
+            alert(
+              '⭐ TOP активовано.'
+            );
           }
-        );
-
+        }
+      );
 
     } catch (error) {
 
       alert(
-        'Помилка TOP:\n\n' +
-        error?.message
+        errorText(error)
       );
 
     } finally {
@@ -2078,14 +2371,13 @@ function App() {
       setBoostingProductId(
         null
       );
-
     }
   }
 
 
-  /* ========================================
-     ADMIN
-  ======================================== */
+  /* =========================================================
+     ADMIN LOAD
+  ========================================================= */
 
   async function loadAdminData() {
 
@@ -2093,19 +2385,22 @@ function App() {
       !currentDbUser
         ?.is_admin
     ) {
+
       return;
     }
 
 
-    setAdminLoading(true);
+    setAdminLoading(
+      true
+    );
 
 
     try {
 
       const [
-        moderationResult,
-        reportsResult,
-        verificationResult
+        moderation,
+        reports,
+        verification
       ] =
         await Promise.all([
 
@@ -2164,34 +2459,31 @@ function App() {
 
 
       setModerationProducts(
-        moderationResult.data ||
+        moderation.data ||
         []
       );
-
 
       setAdminReports(
-        reportsResult.data ||
+        reports.data ||
         []
       );
-
 
       setVerificationUsers(
-        verificationResult.data ||
+        verification.data ||
         []
       );
-
 
     } catch (error) {
 
       alert(
-        'Помилка адмінки:\n' +
         errorText(error)
       );
 
     } finally {
 
-      setAdminLoading(false);
-
+      setAdminLoading(
+        false
+      );
     }
   }
 
@@ -2199,7 +2491,8 @@ function App() {
   React.useEffect(() => {
 
     if (
-      tab === 'admin' &&
+      tab ===
+      'admin' &&
       currentDbUser
         ?.is_admin
     ) {
@@ -2213,45 +2506,47 @@ function App() {
   ]);
 
 
+  /* =========================================================
+     SECURE ADMIN ACTIONS
+  ========================================================= */
+
   async function approveProduct(
     prod
   ) {
 
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('products')
-        .update({
-          moderation_status:
-            'approved',
-
-          moderation_reason:
-            null,
-
-          moderated_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          prod.id
-        );
+    setSecureLoading(
+      true
+    );
 
 
-    if (error) {
+    try {
+
+      await secureAction(
+        'approve_product',
+        {
+          productId:
+            prod.id
+        }
+      );
+
+
+      await Promise.all([
+        loadAdminData(),
+        fetchProducts()
+      ]);
+
+    } catch (error) {
 
       alert(
         errorText(error)
       );
 
-      return;
+    } finally {
+
+      setSecureLoading(
+        false
+      );
     }
-
-
-    await loadAdminData();
-
-    await fetchProducts();
   }
 
 
@@ -2269,46 +2564,124 @@ function App() {
     if (
       reason === null
     ) {
+
       return;
     }
 
 
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('products')
-        .update({
-          moderation_status:
-            'rejected',
-
-          moderation_reason:
-            reason ||
-            'Відхилено модератором',
-
-          moderated_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          prod.id
-        );
+    setSecureLoading(
+      true
+    );
 
 
-    if (error) {
+    try {
+
+      await secureAction(
+        'reject_product',
+        {
+          productId:
+            prod.id,
+
+          reason
+        }
+      );
+
+
+      await Promise.all([
+        loadAdminData(),
+        fetchProducts()
+      ]);
+
+    } catch (error) {
 
       alert(
         errorText(error)
       );
 
-      return;
+    } finally {
+
+      setSecureLoading(
+        false
+      );
     }
+  }
 
 
-    await loadAdminData();
+  async function approveVerification(
+    user
+  ) {
 
-    await fetchProducts();
+    setSecureLoading(
+      true
+    );
+
+
+    try {
+
+      await secureAction(
+        'approve_verification',
+        {
+          userId:
+            user.id
+        }
+      );
+
+
+      await Promise.all([
+        loadAdminData(),
+        fetchProducts(),
+        reloadCurrentUser()
+      ]);
+
+    } catch (error) {
+
+      alert(
+        errorText(error)
+      );
+
+    } finally {
+
+      setSecureLoading(
+        false
+      );
+    }
+  }
+
+
+  async function rejectVerification(
+    user
+  ) {
+
+    setSecureLoading(
+      true
+    );
+
+
+    try {
+
+      await secureAction(
+        'reject_verification',
+        {
+          userId:
+            user.id
+        }
+      );
+
+
+      await loadAdminData();
+
+    } catch (error) {
+
+      alert(
+        errorText(error)
+      );
+
+    } finally {
+
+      setSecureLoading(
+        false
+      );
+    }
   }
 
 
@@ -2316,40 +2689,40 @@ function App() {
     report
   ) {
 
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('reports')
-        .update({
-          status:
-            'resolved',
-
-          resolved_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          report.id
-        );
+    setSecureLoading(
+      true
+    );
 
 
-    if (error) {
+    try {
+
+      await secureAction(
+        'resolve_report',
+        {
+          reportId:
+            report.id
+        }
+      );
+
+
+      await loadAdminData();
+
+    } catch (error) {
 
       alert(
         errorText(error)
       );
 
-      return;
+    } finally {
+
+      setSecureLoading(
+        false
+      );
     }
-
-
-    await loadAdminData();
   }
 
 
-  async function rejectReportedProduct(
+  async function hideReportedProduct(
     report
   ) {
 
@@ -2363,135 +2736,52 @@ function App() {
     if (
       reason === null
     ) {
-      return;
-    }
-
-
-    const {
-      error: productError
-    } =
-      await supabaseClient
-        .from('products')
-        .update({
-          moderation_status:
-            'rejected',
-
-          moderation_reason:
-            reason,
-
-          moderated_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          report.product_id
-        );
-
-
-    if (
-      productError
-    ) {
-
-      alert(
-        errorText(
-          productError
-        )
-      );
 
       return;
     }
 
 
-    await resolveReport(
-      report
+    setSecureLoading(
+      true
     );
 
-    await fetchProducts();
-  }
+
+    try {
+
+      await secureAction(
+        'hide_reported_product',
+        {
+          reportId:
+            report.id,
+
+          reason
+        }
+      );
 
 
-  async function approveVerification(
-    user
-  ) {
+      await Promise.all([
+        loadAdminData(),
+        fetchProducts()
+      ]);
 
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('users')
-        .update({
-          is_verified:
-            true,
-
-          verification_status:
-            'approved',
-
-          verified_at:
-            new Date()
-              .toISOString()
-        })
-        .eq(
-          'id',
-          user.id
-        );
-
-
-    if (error) {
+    } catch (error) {
 
       alert(
         errorText(error)
       );
 
-      return;
-    }
+    } finally {
 
-
-    await loadAdminData();
-
-    await fetchProducts();
-  }
-
-
-  async function rejectVerification(
-    user
-  ) {
-
-    const {
-      error
-    } =
-      await supabaseClient
-        .from('users')
-        .update({
-          is_verified:
-            false,
-
-          verification_status:
-            'rejected'
-        })
-        .eq(
-          'id',
-          user.id
-        );
-
-
-    if (error) {
-
-      alert(
-        errorText(error)
+      setSecureLoading(
+        false
       );
-
-      return;
     }
-
-
-    await loadAdminData();
   }
 
 
-  /* ========================================
-     CHAT / SHARE
-  ======================================== */
+  /* =========================================================
+     TELEGRAM
+  ========================================================= */
 
   function openSellerChat(
     username
@@ -2500,7 +2790,7 @@ function App() {
     if (!username) {
 
       alert(
-        'У продавця немає Telegram username.'
+        'У продавця немає username.'
       );
 
       return;
@@ -2509,7 +2799,10 @@ function App() {
 
     const clean =
       String(username)
-        .replace(/^@/, '');
+        .replace(
+          /^@/,
+          ''
+        );
 
 
     tg?.openTelegramLink(
@@ -2522,11 +2815,6 @@ function App() {
     prod
   ) {
 
-    const text =
-      `${prod.title} — ` +
-      `${prod.price_uah} ₴`;
-
-
     tg?.openTelegramLink(
       'https://t.me/share/url?' +
       'url=' +
@@ -2535,19 +2823,22 @@ function App() {
       ) +
       '&text=' +
       encodeURIComponent(
-        text
+        `${prod.title} — ${prod.price_uah} ₴`
       )
     );
   }
 
 
-  /* ========================================
+  /* =========================================================
      HELPERS
-  ======================================== */
+  ========================================================= */
 
-  function isExpired(prod) {
+  function isExpired(
+    prod
+  ) {
 
     if (!prod.expires_at) {
+
       return false;
     }
 
@@ -2561,14 +2852,17 @@ function App() {
   }
 
 
-  function daysLeft(prod) {
+  function daysLeft(
+    prod
+  ) {
 
     if (!prod.expires_at) {
+
       return null;
     }
 
 
-    const diff =
+    const difference =
       new Date(
         prod.expires_at
       ) -
@@ -2578,7 +2872,7 @@ function App() {
     return Math.max(
       0,
       Math.ceil(
-        diff /
+        difference /
         (
           1000 *
           60 *
@@ -2598,23 +2892,27 @@ function App() {
       status ===
       'approved'
     ) {
+
       return '✅ Схвалено';
     }
+
 
     if (
       status ===
       'rejected'
     ) {
+
       return '❌ Відхилено';
     }
+
 
     return '🕐 На модерації';
   }
 
 
-  /* ========================================
-     FILTERS
-  ======================================== */
+  /* =========================================================
+     FILTERED PRODUCTS
+  ========================================================= */
 
   const catalogProducts =
     products
@@ -2623,6 +2921,7 @@ function App() {
         if (
           prod.is_sold
         ) {
+
           return false;
         }
 
@@ -2630,6 +2929,7 @@ function App() {
         if (
           isExpired(prod)
         ) {
+
           return false;
         }
 
@@ -2638,137 +2938,181 @@ function App() {
           prod.moderation_status !==
           'approved'
         ) {
+
           return false;
         }
 
 
-        const categoryMatch =
-          selectedCategory
-            ? String(
-                prod.category_id
-              ) ===
-              String(
-                selectedCategory
-              )
-            : true;
-
-
-        const searchMatch =
+        if (
+          selectedCategory &&
           String(
-            prod.title || ''
+            prod.category_id
+          ) !==
+          String(
+            selectedCategory
+          )
+        ) {
+
+          return false;
+        }
+
+
+        if (
+          searchQuery &&
+          !String(
+            prod.title ||
+            ''
           )
             .toLowerCase()
             .includes(
               searchQuery
                 .toLowerCase()
-            );
-
-
-        const minMatch =
-          minPrice
-            ? Number(
-                prod.price_uah
-              ) >=
-              Number(
-                minPrice
-              )
-            : true;
-
-
-        const maxMatch =
-          maxPrice
-            ? Number(
-                prod.price_uah
-              ) <=
-              Number(
-                maxPrice
-              )
-            : true;
-
-
-        const conditionMatch =
-          conditionFilter ===
-          'all'
-            ? true
-            : prod.condition ===
-              conditionFilter;
-
-
-        return (
-          categoryMatch &&
-          searchMatch &&
-          minMatch &&
-          maxMatch &&
-          conditionMatch
-        );
-      })
-      .sort((a, b) => {
-
-        const topA =
-          isTop(a);
-
-        const topB =
-          isTop(b);
-
-
-        if (
-          topA !== topB
-        ) {
-          return topA
-            ? -1
-            : 1;
-        }
-
-
-        if (
-          sortOption ===
-          'price_asc'
-        ) {
-          return (
-            Number(
-              a.price_uah
-            ) -
-            Number(
-              b.price_uah
             )
-          );
+        ) {
+
+          return false;
         }
 
 
         if (
-          sortOption ===
-          'price_desc'
+          filterRegion &&
+          prod.region !==
+          filterRegion
         ) {
-          return (
-            Number(
-              b.price_uah
-            ) -
-            Number(
-              a.price_uah
-            )
-          );
+
+          return false;
         }
 
 
-        return (
-          new Date(
-            b.created_at
-          ) -
-          new Date(
-            a.created_at
+        if (
+          filterCity &&
+          !String(
+            prod.city ||
+            ''
           )
-        );
-      });
+            .toLowerCase()
+            .includes(
+              filterCity
+                .toLowerCase()
+            )
+        ) {
+
+          return false;
+        }
+
+
+        if (
+          minPrice &&
+          Number(
+            prod.price_uah
+          ) <
+          Number(
+            minPrice
+          )
+        ) {
+
+          return false;
+        }
+
+
+        if (
+          maxPrice &&
+          Number(
+            prod.price_uah
+          ) >
+          Number(
+            maxPrice
+          )
+        ) {
+
+          return false;
+        }
+
+
+        if (
+          conditionFilter !==
+          'all' &&
+          prod.condition !==
+          conditionFilter
+        ) {
+
+          return false;
+        }
+
+
+        return true;
+      })
+      .sort(
+        (a, b) => {
+
+          const topA =
+            isTop(a);
+
+          const topB =
+            isTop(b);
+
+
+          if (
+            topA !== topB
+          ) {
+
+            return topA
+              ? -1
+              : 1;
+          }
+
+
+          if (
+            sortOption ===
+            'price_asc'
+          ) {
+
+            return (
+              Number(
+                a.price_uah
+              ) -
+              Number(
+                b.price_uah
+              )
+            );
+          }
+
+
+          if (
+            sortOption ===
+            'price_desc'
+          ) {
+
+            return (
+              Number(
+                b.price_uah
+              ) -
+              Number(
+                a.price_uah
+              )
+            );
+          }
+
+
+          return (
+            new Date(
+              b.created_at
+            ) -
+            new Date(
+              a.created_at
+            )
+          );
+        }
+      );
 
 
   const favoriteProducts =
-    catalogProducts
-      .filter(
-        prod =>
-          favoriteIds.includes(
-            prod.id
-          )
-      );
+    catalogProducts.filter(
+      prod =>
+        favoriteIds.includes(
+          prod.id
+        )
+    );
 
 
   const myProducts =
@@ -2781,29 +3125,9 @@ function App() {
       : [];
 
 
-  const avgRating =
-    sellerReviews.length
-      ? (
-          sellerReviews.reduce(
-            (
-              sum,
-              item
-            ) =>
-              sum +
-              Number(
-                item.rating ||
-                0
-              ),
-            0
-          ) /
-          sellerReviews.length
-        ).toFixed(1)
-      : null;
-
-
-  /* ========================================
+  /* =========================================================
      PRODUCT CARD
-  ======================================== */
+  ========================================================= */
 
   function ProductCard({
     prod
@@ -2818,13 +3142,12 @@ function App() {
           )
         }
         className="
+          relative
           bg-white
           text-[#002f34]
           rounded-xl
-          shadow-md
           p-2.5
-          relative
-          cursor-pointer
+          shadow-md
           active:scale-[0.98]
           transition
         "
@@ -2840,8 +3163,8 @@ function App() {
           }
           className="
             absolute
-            top-4
             right-4
+            top-4
             z-10
             bg-white/90
             rounded-full
@@ -2869,9 +3192,9 @@ function App() {
               top-4
               z-10
               bg-amber-300
+              rounded
               px-2
               py-1
-              rounded
               text-[9px]
               font-black
             "
@@ -2923,8 +3246,8 @@ function App() {
               flex
               items-center
               justify-center
-              text-3xl
               mb-2
+              text-3xl
             "
           >
             🖼️
@@ -2936,8 +3259,8 @@ function App() {
         <div
           className="
             flex
-            gap-1
             flex-wrap
+            gap-1
             mb-1
           "
         >
@@ -2945,9 +3268,9 @@ function App() {
           <span
             className="
               bg-[#23e5bf]
+              rounded
               px-1.5
               py-0.5
-              rounded
               text-[9px]
               font-black
             "
@@ -2967,9 +3290,9 @@ function App() {
               className="
                 bg-blue-100
                 text-blue-700
+                rounded
                 px-1.5
                 py-0.5
-                rounded
                 text-[9px]
                 font-black
               "
@@ -2994,18 +3317,48 @@ function App() {
         </h3>
 
 
+        {(prod.city ||
+          prod.region) && (
+
+          <p
+            className="
+              text-[10px]
+              text-gray-500
+              truncate
+              mt-1
+            "
+          >
+            📍 {
+              prod.city
+            }
+            {
+              prod.city &&
+              prod.region
+                ? ', '
+                : ''
+            }
+            {
+              prod.region
+            }
+          </p>
+
+        )}
+
+
         <div
           className="
             mt-2
-            border-t
             pt-2
+            border-t
             flex
             justify-between
           "
         >
 
           <b>
-            {prod.price_uah} ₴
+            {
+              prod.price_uah
+            } ₴
           </b>
 
           <span
@@ -3014,7 +3367,7 @@ function App() {
               text-gray-400
             "
           >
-            👁️ {
+            👁 {
               prod.views_count ||
               0
             }
@@ -3027,9 +3380,9 @@ function App() {
   }
 
 
-  /* ========================================
-     UI
-  ======================================== */
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
 
@@ -3069,23 +3422,23 @@ function App() {
 
           <span
             className="
-              text-3xl
-              text-[#23e5bf]
+              text-2xl
               font-black
+              text-[#23e5bf]
             "
           >
-            OLX
+            MARKET
           </span>
 
           <span
             className="
-              text-xs
+              text-[10px]
               bg-[#104b50]
               text-[#23e5bf]
+              rounded
               px-2
               py-1
-              rounded
-              font-bold
+              font-black
             "
           >
             UA
@@ -3096,13 +3449,11 @@ function App() {
 
         <div
           className="
-            text-xs
             bg-[#104b50]
-            border
-            border-[#1b646a]
             rounded-full
             px-3
             py-1.5
+            text-xs
           "
         >
           👤 {
@@ -3121,24 +3472,22 @@ function App() {
       </header>
 
 
+      {/* ERROR */}
+
       {appError && (
 
         <div
           className="
             m-4
-            p-4
-            rounded-xl
+            bg-red-950/50
             border
             border-red-600
-            bg-red-950/50
+            rounded-xl
+            p-4
           "
         >
 
-          <b
-            className="
-              text-red-300
-            "
-          >
+          <b>
             ⚠️ Помилка
           </b>
 
@@ -3152,6 +3501,7 @@ function App() {
             {appError}
           </p>
 
+
           <button
             type="button"
             onClick={
@@ -3160,15 +3510,15 @@ function App() {
             className="
               bg-white
               text-red-700
-              font-black
               rounded-lg
               px-4
               py-2
               mt-3
               text-xs
+              font-black
             "
           >
-            Спробувати ще раз
+            Повторити
           </button>
 
         </div>
@@ -3178,7 +3528,8 @@ function App() {
 
       {/* CATALOG */}
 
-      {tab === 'catalog' && (
+      {tab ===
+        'catalog' && (
 
         <main className="p-4">
 
@@ -3192,7 +3543,6 @@ function App() {
 
             <input
               type="text"
-              placeholder="🔍 Пошук..."
               value={
                 searchQuery
               }
@@ -3201,12 +3551,14 @@ function App() {
                   e.target.value
                 )
               }
+              placeholder="🔍 Пошук..."
               className="
                 flex-1
                 rounded-xl
                 p-3
               "
             />
+
 
             <button
               type="button"
@@ -3217,11 +3569,11 @@ function App() {
                 )
               }
               className="
-                px-4
-                rounded-xl
                 bg-[#00474e]
                 border
                 border-[#104b50]
+                rounded-xl
+                px-4
               "
             >
               ⚙️
@@ -3235,14 +3587,73 @@ function App() {
             <div
               className="
                 bg-[#00383e]
-                rounded-xl
                 border
                 border-[#104b50]
+                rounded-xl
                 p-3
                 mb-3
                 space-y-2
               "
             >
+
+              <select
+                value={
+                  filterRegion
+                }
+                onChange={e =>
+                  setFilterRegion(
+                    e.target.value
+                  )
+                }
+                className="
+                  w-full
+                  rounded-lg
+                  p-2
+                "
+              >
+
+                <option value="">
+                  Вся Україна
+                </option>
+
+                {REGIONS.map(
+                  item => (
+
+                    <option
+                      key={
+                        item
+                      }
+                      value={
+                        item
+                      }
+                    >
+                      {item}
+                    </option>
+
+                  )
+                )}
+
+              </select>
+
+
+              <input
+                type="text"
+                value={
+                  filterCity
+                }
+                onChange={e =>
+                  setFilterCity(
+                    e.target.value
+                  )
+                }
+                placeholder="Місто"
+                className="
+                  w-full
+                  rounded-lg
+                  p-2
+                "
+              />
+
 
               <div
                 className="
@@ -3253,7 +3664,6 @@ function App() {
 
                 <input
                   type="number"
-                  placeholder="Ціна від"
                   value={
                     minPrice
                   }
@@ -3262,16 +3672,16 @@ function App() {
                       e.target.value
                     )
                   }
+                  placeholder="Ціна від"
                   className="
                     w-1/2
-                    p-2
                     rounded-lg
+                    p-2
                   "
                 />
 
                 <input
                   type="number"
-                  placeholder="Ціна до"
                   value={
                     maxPrice
                   }
@@ -3280,10 +3690,11 @@ function App() {
                       e.target.value
                     )
                   }
+                  placeholder="Ціна до"
                   className="
                     w-1/2
-                    p-2
                     rounded-lg
+                    p-2
                   "
                 />
 
@@ -3308,8 +3719,8 @@ function App() {
                   }
                   className="
                     w-1/2
-                    p-2
                     rounded-lg
+                    p-2
                   "
                 >
 
@@ -3318,11 +3729,11 @@ function App() {
                   </option>
 
                   <option value="new">
-                    ✨ Новий
+                    Новий
                   </option>
 
                   <option value="used">
-                    👌 Вживаний
+                    Вживаний
                   </option>
 
                 </select>
@@ -3339,8 +3750,8 @@ function App() {
                   }
                   className="
                     w-1/2
-                    p-2
                     rounded-lg
+                    p-2
                   "
                 >
 
@@ -3360,6 +3771,33 @@ function App() {
 
               </div>
 
+
+              <button
+                type="button"
+                onClick={() => {
+
+                  setFilterRegion('');
+                  setFilterCity('');
+                  setMinPrice('');
+                  setMaxPrice('');
+                  setConditionFilter(
+                    'all'
+                  );
+
+                }}
+                className="
+                  w-full
+                  bg-white
+                  text-[#002f34]
+                  rounded-lg
+                  py-2
+                  text-xs
+                  font-black
+                "
+              >
+                Скинути фільтри
+              </button>
+
             </div>
 
           )}
@@ -3372,7 +3810,6 @@ function App() {
               overflow-x-auto
               no-scrollbar
               mb-4
-              pb-1
             "
           >
 
@@ -3393,19 +3830,21 @@ function App() {
                 )
               }
             >
-              Всі товари
+              Всі
             </button>
 
 
             {categories.map(
-              cat => (
+              category => (
 
                 <button
-                  key={cat.id}
+                  key={
+                    category.id
+                  }
                   type="button"
                   onClick={() =>
                     setSelectedCategory(
-                      cat.id
+                      category.id
                     )
                   }
                   className={
@@ -3415,14 +3854,16 @@ function App() {
                         selectedCategory
                       ) ===
                       String(
-                        cat.id
+                        category.id
                       )
                         ? 'bg-[#23e5bf] text-[#002f34]'
                         : 'bg-[#00474e]'
                     )
                   }
                 >
-                  {cat.title}
+                  {
+                    category.title
+                  }
                 </button>
 
               )
@@ -3445,25 +3886,19 @@ function App() {
             </div>
 
           ) : catalogProducts.length ===
-              0 ? (
+          0 ? (
 
             <div
               className="
-                p-8
-                text-center
-                rounded-2xl
+                bg-[#00383e]
                 border
                 border-[#104b50]
-                bg-[#00383e]
+                rounded-xl
+                p-8
+                text-center
               "
             >
-              <div className="text-4xl">
-                📦
-              </div>
-
-              <b>
-                Оголошень немає
-              </b>
+              📦 Нічого не знайдено
             </div>
 
           ) : (
@@ -3502,7 +3937,8 @@ function App() {
 
       {/* FAVORITES */}
 
-      {tab === 'favorites' && (
+      {tab ===
+        'favorites' && (
 
         <main className="p-4">
 
@@ -3568,7 +4004,8 @@ function App() {
 
       {/* ADD */}
 
-      {tab === 'add' && (
+      {tab ===
+        'add' && (
 
         <main className="p-4">
 
@@ -3584,8 +4021,8 @@ function App() {
 
             <h2
               className="
-                font-black
                 text-lg
+                font-black
                 mb-4
               "
             >
@@ -3604,159 +4041,159 @@ function App() {
               className="space-y-4"
             >
 
-              <div>
-
-                <label
-                  className="
-                    text-xs
-                    font-bold
-                  "
-                >
-                  Назва *
-                </label>
-
-                <input
-                  type="text"
-                  value={
-                    title
-                  }
-                  onChange={e =>
-                    setTitle(
-                      e.target.value
-                    )
-                  }
-                  className="
-                    w-full
-                    p-3
-                    rounded-xl
-                    mt-1
-                  "
-                  placeholder="Наприклад iPhone 13"
-                />
-
-              </div>
+              <input
+                type="text"
+                value={
+                  title
+                }
+                onChange={e =>
+                  setTitle(
+                    e.target.value
+                  )
+                }
+                placeholder="Назва товару"
+                className="
+                  w-full
+                  rounded-xl
+                  p-3
+                "
+              />
 
 
-              <div>
-
-                <label
-                  className="
-                    text-xs
-                    font-bold
-                  "
-                >
-                  Ціна *
-                </label>
-
-                <input
-                  type="number"
-                  value={
-                    price
-                  }
-                  onChange={e =>
-                    setPrice(
-                      e.target.value
-                    )
-                  }
-                  className="
-                    w-full
-                    p-3
-                    rounded-xl
-                    mt-1
-                  "
-                  placeholder="300"
-                />
-
-              </div>
+              <input
+                type="number"
+                value={
+                  price
+                }
+                onChange={e =>
+                  setPrice(
+                    e.target.value
+                  )
+                }
+                placeholder="Ціна ₴"
+                className="
+                  w-full
+                  rounded-xl
+                  p-3
+                "
+              />
 
 
-              <div>
+              <select
+                value={
+                  categoryId
+                }
+                onChange={e =>
+                  setCategoryId(
+                    e.target.value
+                  )
+                }
+                className="
+                  w-full
+                  rounded-xl
+                  p-3
+                "
+              >
 
-                <label
-                  className="
-                    text-xs
-                    font-bold
-                  "
-                >
-                  Стан
-                </label>
+                <option value="">
+                  Оберіть категорію
+                </option>
+
+                {categories.map(
+                  category => (
+
+                    <option
+                      key={
+                        category.id
+                      }
+                      value={
+                        category.id
+                      }
+                    >
+                      {
+                        category.title
+                      }
+                    </option>
+
+                  )
+                )}
+
+              </select>
+
+
+              <select
+                value={
+                  condition
+                }
+                onChange={e =>
+                  setCondition(
+                    e.target.value
+                  )
+                }
+                className="
+                  w-full
+                  rounded-xl
+                  p-3
+                "
+              >
+
+                <option value="used">
+                  👌 Вживаний
+                </option>
+
+                <option value="new">
+                  ✨ Новий
+                </option>
+
+              </select>
+
+
+              <div
+                className="
+                  bg-[#00474e]
+                  rounded-xl
+                  p-3
+                  space-y-2
+                "
+              >
+
+                <b className="text-xs">
+                  📍 Місцезнаходження
+                </b>
+
 
                 <select
                   value={
-                    condition
+                    region
                   }
                   onChange={e =>
-                    setCondition(
+                    setRegion(
                       e.target.value
                     )
                   }
                   className="
                     w-full
+                    rounded-lg
                     p-3
-                    rounded-xl
-                    mt-1
-                  "
-                >
-
-                  <option value="used">
-                    👌 Вживаний
-                  </option>
-
-                  <option value="new">
-                    ✨ Новий
-                  </option>
-
-                </select>
-
-              </div>
-
-
-              <div>
-
-                <label
-                  className="
-                    text-xs
-                    font-bold
-                  "
-                >
-                  Категорія *
-                </label>
-
-                <select
-                  value={
-                    categoryId
-                  }
-                  onChange={e =>
-                    setCategoryId(
-                      e.target.value
-                    )
-                  }
-                  className="
-                    w-full
-                    p-3
-                    rounded-xl
-                    mt-1
                   "
                 >
 
                   <option value="">
-                    Оберіть категорію
+                    Оберіть область
                   </option>
 
-                  {categories.map(
-                    cat => (
+                  {REGIONS.map(
+                    item => (
 
                       <option
                         key={
-                          cat.id
+                          item
                         }
                         value={
-                          cat.id
+                          item
                         }
                       >
-                        {
-                          cat.title
-                        }
+                        {item}
                       </option>
 
                     )
@@ -3764,14 +4201,34 @@ function App() {
 
                 </select>
 
+
+                <input
+                  type="text"
+                  value={
+                    city
+                  }
+                  onChange={e =>
+                    setCity(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Місто, наприклад Вінниця"
+                  className="
+                    w-full
+                    rounded-lg
+                    p-3
+                  "
+                />
+
               </div>
 
 
               <div>
 
-                <label
+                <p
                   className="
                     text-xs
+                    mb-2
                     font-bold
                   "
                 >
@@ -3779,7 +4236,7 @@ function App() {
                     existingImageUrls.length +
                     imageFiles.length
                   }/5)
-                </label>
+                </p>
 
 
                 <div
@@ -3788,7 +4245,6 @@ function App() {
                     gap-2
                     overflow-x-auto
                     no-scrollbar
-                    mt-2
                   "
                 >
 
@@ -3800,8 +4256,7 @@ function App() {
 
                     <div
                       key={
-                        'old-' +
-                        index
+                        `old-${index}`
                       }
                       className="
                         relative
@@ -3834,8 +4289,8 @@ function App() {
                         }
                         className="
                           absolute
-                          top-1
                           right-1
+                          top-1
                           bg-red-600
                           w-6
                           h-6
@@ -3858,8 +4313,7 @@ function App() {
 
                     <div
                       key={
-                        'new-' +
-                        index
+                        `new-${index}`
                       }
                       className="
                         relative
@@ -3892,8 +4346,8 @@ function App() {
                         }
                         className="
                           absolute
-                          top-1
                           right-1
+                          top-1
                           bg-red-600
                           w-6
                           h-6
@@ -3923,41 +4377,24 @@ function App() {
                         border-[#23e5bf]
                         rounded-xl
                         flex
-                        flex-col
                         items-center
                         justify-center
-                        bg-[#00474e]
+                        text-center
+                        text-xs
+                        font-black
                       "
                     >
-
-                      <span
-                        className="
-                          text-3xl
-                          text-[#23e5bf]
-                        "
-                      >
-                        +
-                      </span>
-
-                      <span
-                        className="
-                          text-xs
-                          font-bold
-                        "
-                      >
-                        Фото
-                      </span>
+                      + Фото
 
                       <input
                         type="file"
-                        multiple
                         accept="image/*"
+                        multiple
                         onChange={
                           handleFilesAdd
                         }
                         className="hidden"
                       />
-
                     </label>
 
                   )}
@@ -3967,53 +4404,37 @@ function App() {
               </div>
 
 
-              <div>
-
-                <label
-                  className="
-                    text-xs
-                    font-bold
-                  "
-                >
-                  Опис
-                </label>
-
-                <textarea
-                  rows="4"
-                  value={
-                    description
-                  }
-                  onChange={e =>
-                    setDescription(
-                      e.target.value
-                    )
-                  }
-                  className="
-                    w-full
-                    rounded-xl
-                    p-3
-                    mt-1
-                  "
-                  placeholder="Детальний опис..."
-                />
-
-              </div>
+              <textarea
+                rows="5"
+                value={
+                  description
+                }
+                onChange={e =>
+                  setDescription(
+                    e.target.value
+                  )
+                }
+                placeholder="Опис товару"
+                className="
+                  w-full
+                  rounded-xl
+                  p-3
+                "
+              />
 
 
               <button
                 type="submit"
                 disabled={
-                  isSubmitting ||
-                  initializing ||
-                  !currentDbUser?.id
+                  isSubmitting
                 }
                 className="
                   w-full
                   bg-[#23e5bf]
                   text-[#002f34]
-                  font-black
                   rounded-xl
                   py-4
+                  font-black
                   disabled:opacity-40
                 "
               >
@@ -4021,7 +4442,7 @@ function App() {
                   isSubmitting
                     ? 'Збереження...'
                     : editingProductId
-                      ? 'Зберегти зміни'
+                      ? 'Зберегти'
                       : 'Опублікувати'
                 }
               </button>
@@ -4037,7 +4458,8 @@ function App() {
 
       {/* PROFILE */}
 
-      {tab === 'profile' && (
+      {tab ===
+        'profile' && (
 
         <main className="p-4">
 
@@ -4069,8 +4491,8 @@ function App() {
                       .photo_url
                   }
                   className="
-                    w-14
-                    h-14
+                    w-16
+                    h-16
                     rounded-full
                     object-cover
                   "
@@ -4080,10 +4502,10 @@ function App() {
 
                 <div
                   className="
-                    w-14
-                    h-14
-                    rounded-full
+                    w-16
+                    h-16
                     bg-[#104b50]
+                    rounded-full
                     flex
                     items-center
                     justify-center
@@ -4096,16 +4518,12 @@ function App() {
               )}
 
 
-              <div
-                className="
-                  flex-1
-                "
-              >
+              <div>
 
                 <h2
                   className="
-                    font-black
                     text-lg
+                    font-black
                   "
                 >
                   {
@@ -4116,8 +4534,9 @@ function App() {
 
                   {
                     currentDbUser
-                      ?.is_verified &&
-                    ' ✓'
+                      ?.is_verified
+                      ? ' ✓'
+                      : ''
                   }
                 </h2>
 
@@ -4131,7 +4550,7 @@ function App() {
                       text-gray-300
                     "
                   >
-                    @ {
+                    @{
                       currentDbUser
                         .username
                     }
@@ -4147,54 +4566,61 @@ function App() {
             <div
               className="
                 mt-4
-                bg-[#00474e]
-                rounded-xl
-                p-3
               "
             >
 
               {currentDbUser
                 ?.is_verified ? (
 
-                <p
+                <div
                   className="
-                    text-[#23e5bf]
+                    bg-blue-100
+                    text-blue-700
+                    rounded-xl
+                    p-3
+                    text-xs
                     font-black
-                    text-sm
                   "
                 >
                   ✅ Верифікований продавець
-                </p>
+                </div>
 
               ) : currentDbUser
                   ?.verification_status ===
                   'pending' ? (
 
-                <p
+                <div
                   className="
-                    text-amber-300
-                    text-sm
-                    font-bold
+                    bg-amber-100
+                    text-amber-700
+                    rounded-xl
+                    p-3
+                    text-xs
+                    font-black
                   "
                 >
-                  🕐 Заявка на верифікацію розглядається
-                </p>
+                  🕐 Заявка розглядається
+                </div>
 
               ) : (
 
                 <button
                   type="button"
+                  disabled={
+                    secureLoading
+                  }
                   onClick={
                     requestVerification
                   }
                   className="
                     w-full
                     bg-blue-100
-                    text-blue-800
-                    rounded-lg
-                    py-2
-                    font-black
+                    text-blue-700
+                    rounded-xl
+                    py-3
                     text-xs
+                    font-black
+                    disabled:opacity-40
                   "
                 >
                   ✅ Подати заявку на верифікацію
@@ -4216,7 +4642,7 @@ function App() {
               mb-3
             "
           >
-            Ваші оголошення ({
+            Мої оголошення ({
               myProducts.length
             })
           </h3>
@@ -4225,340 +4651,293 @@ function App() {
           <div className="space-y-3">
 
             {myProducts.map(
-              prod => {
+              prod => (
 
-                const expired =
-                  isExpired(prod);
+              <div
+                key={
+                  prod.id
+                }
+                className="
+                  bg-white
+                  text-[#002f34]
+                  rounded-xl
+                  p-3
+                "
+              >
 
-                const left =
-                  daysLeft(prod);
+                <div
+                  className="
+                    flex
+                    gap-3
+                  "
+                >
 
+                  {prod.image_url && (
 
-                return (
+                    <img
+                      src={
+                        prod.image_url
+                      }
+                      className="
+                        w-16
+                        h-16
+                        rounded-lg
+                        object-cover
+                      "
+                    />
+
+                  )}
+
 
                   <div
-                    key={
-                      prod.id
-                    }
                     className="
-                      bg-white
-                      text-[#002f34]
-                      rounded-xl
-                      p-3
+                      flex-1
+                      min-w-0
                     "
                   >
 
-                    <div
+                    <b
                       className="
-                        flex
-                        gap-3
+                        block
+                        truncate
                       "
                     >
+                      {
+                        prod.title
+                      }
+                    </b>
 
-                      {prod.image_url ? (
+                    <b>
+                      {
+                        prod.price_uah
+                      } ₴
+                    </b>
 
-                        <img
-                          src={
-                            prod.image_url
-                          }
-                          className="
-                            w-16
-                            h-16
-                            rounded-lg
-                            object-cover
-                          "
-                        />
-
-                      ) : (
-
-                        <div
-                          className="
-                            w-16
-                            h-16
-                            bg-gray-100
-                            rounded-lg
-                            flex
-                            items-center
-                            justify-center
-                          "
-                        >
-                          🖼️
-                        </div>
-
-                      )}
-
-
-                      <div
-                        className="
-                          flex-1
-                          min-w-0
-                        "
-                      >
-
-                        <b
-                          className="
-                            block
-                            truncate
-                          "
-                        >
-                          {prod.title}
-                        </b>
-
-                        <b>
-                          {prod.price_uah} ₴
-                        </b>
-
-                        <div
-                          className="
-                            text-xs
-                            text-gray-500
-                          "
-                        >
-                          👁️ {
-                            prod.views_count ||
-                            0
-                          }
-                        </div>
-
-                      </div>
-
-                    </div>
-
-
-                    <div
+                    <p
                       className="
-                        mt-3
-                        space-y-2
+                        text-[10px]
+                        text-gray-500
                       "
                     >
-
-                      <div
-                        className="
-                          text-xs
-                          rounded-lg
-                          bg-gray-100
-                          p-2
-                          font-bold
-                        "
-                      >
-                        {
-                          moderationLabel(
-                            prod.moderation_status
-                          )
-                        }
-                      </div>
-
-
-                      {prod.moderation_status ===
-                        'rejected' &&
-                        prod.moderation_reason && (
-
-                        <div
-                          className="
-                            bg-red-100
-                            text-red-700
-                            rounded-lg
-                            p-2
-                            text-xs
-                          "
-                        >
-                          Причина: {
-                            prod.moderation_reason
-                          }
-                        </div>
-
-                      )}
-
-
-                      {expired ? (
-
-                        <div
-                          className="
-                            bg-red-100
-                            text-red-700
-                            rounded-lg
-                            p-2
-                            text-xs
-                            font-bold
-                          "
-                        >
-                          ⏳ Термін оголошення закінчився
-                        </div>
-
-                      ) : (
-
-                        <div
-                          className="
-                            bg-green-100
-                            text-green-700
-                            rounded-lg
-                            p-2
-                            text-xs
-                            font-bold
-                          "
-                        >
-                          ⏳ Залишилось приблизно {
-                            left
-                          } дн.
-                        </div>
-
-                      )}
-
-
-                      {isTop(prod) && (
-
-                        <div
-                          className="
-                            bg-amber-100
-                            text-amber-800
-                            rounded-lg
-                            p-2
-                            text-xs
-                            font-black
-                          "
-                        >
-                          ⭐ TOP активний
-                        </div>
-
-                      )}
-
-                    </div>
-
-
-                    <div
-                      className="
-                        grid
-                        grid-cols-2
-                        gap-2
-                        mt-3
-                      "
-                    >
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          startEditing(
-                            prod
-                          )
-                        }
-                        className="
-                          bg-blue-100
-                          text-blue-700
-                          rounded-lg
-                          py-2
-                          text-xs
-                          font-bold
-                        "
-                      >
-                        ✏️ Редагувати
-                      </button>
-
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleSoldStatus(
-                            prod
-                          )
-                        }
-                        className="
-                          bg-green-100
-                          text-green-700
-                          rounded-lg
-                          py-2
-                          text-xs
-                          font-bold
-                        "
-                      >
-                        {
-                          prod.is_sold
-                            ? 'Повернути в продаж'
-                            : '✅ Продано'
-                        }
-                      </button>
-
-
-                      {expired ? (
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            renewProduct(
-                              prod
-                            )
-                          }
-                          className="
-                            bg-purple-100
-                            text-purple-700
-                            rounded-lg
-                            py-2
-                            text-xs
-                            font-black
-                          "
-                        >
-                          🔄 +30 днів
-                        </button>
-
-                      ) : (
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            boostProduct(
-                              prod
-                            )
-                          }
-                          disabled={
-                            prod.is_sold ||
-                            boostingProductId ===
-                              prod.id
-                          }
-                          className="
-                            bg-amber-100
-                            text-amber-800
-                            rounded-lg
-                            py-2
-                            text-xs
-                            font-black
-                            disabled:opacity-40
-                          "
-                        >
-                          {
-                            boostingProductId ===
-                            prod.id
-                              ? '⏳...'
-                              : '⭐ TOP — 50 ⭐'
-                          }
-                        </button>
-
-                      )}
-
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteProduct(
-                            prod
-                          )
-                        }
-                        className="
-                          bg-red-100
-                          text-red-700
-                          rounded-lg
-                          py-2
-                          text-xs
-                          font-bold
-                        "
-                      >
-                        🗑️ Видалити
-                      </button>
-
-                    </div>
+                      📍 {
+                        prod.city ||
+                        'Не вказано'
+                      }
+                    </p>
 
                   </div>
-                );
-              }
-            )}
+
+                </div>
+
+
+                <div
+                  className="
+                    bg-gray-100
+                    rounded-lg
+                    p-2
+                    text-xs
+                    font-bold
+                    mt-3
+                  "
+                >
+                  {
+                    moderationLabel(
+                      prod.moderation_status
+                    )
+                  }
+                </div>
+
+
+                {prod.moderation_status ===
+                  'rejected' &&
+                  prod.moderation_reason && (
+
+                  <div
+                    className="
+                      bg-red-100
+                      text-red-700
+                      rounded-lg
+                      p-2
+                      text-xs
+                      mt-2
+                    "
+                  >
+                    Причина: {
+                      prod.moderation_reason
+                    }
+                  </div>
+
+                )}
+
+
+                <div
+                  className="
+                    mt-2
+                    text-xs
+                    font-bold
+                  "
+                >
+
+                  {isExpired(
+                    prod
+                  ) ? (
+
+                    <span
+                      className="
+                        text-red-600
+                      "
+                    >
+                      ⏳ Термін закінчився
+                    </span>
+
+                  ) : (
+
+                    <span
+                      className="
+                        text-green-600
+                      "
+                    >
+                      ⏳ Залишилось {
+                        daysLeft(
+                          prod
+                        )
+                      } дн.
+                    </span>
+
+                  )}
+
+                </div>
+
+
+                <div
+                  className="
+                    grid
+                    grid-cols-2
+                    gap-2
+                    mt-3
+                  "
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startEditing(
+                        prod
+                      )
+                    }
+                    className="
+                      bg-blue-100
+                      text-blue-700
+                      rounded-lg
+                      py-2
+                      text-xs
+                      font-bold
+                    "
+                  >
+                    ✏️ Редагувати
+                  </button>
+
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggleSoldStatus(
+                        prod
+                      )
+                    }
+                    className="
+                      bg-green-100
+                      text-green-700
+                      rounded-lg
+                      py-2
+                      text-xs
+                      font-bold
+                    "
+                  >
+                    {
+                      prod.is_sold
+                        ? 'Повернути'
+                        : '✅ Продано'
+                    }
+                  </button>
+
+
+                  {isExpired(
+                    prod
+                  ) ? (
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        renewProduct(
+                          prod
+                        )
+                      }
+                      className="
+                        bg-purple-100
+                        text-purple-700
+                        rounded-lg
+                        py-2
+                        text-xs
+                        font-black
+                      "
+                    >
+                      🔄 +30 днів
+                    </button>
+
+                  ) : (
+
+                    <button
+                      type="button"
+                      disabled={
+                        boostingProductId ===
+                        prod.id
+                      }
+                      onClick={() =>
+                        boostProduct(
+                          prod
+                        )
+                      }
+                      className="
+                        bg-amber-100
+                        text-amber-800
+                        rounded-lg
+                        py-2
+                        text-xs
+                        font-black
+                        disabled:opacity-40
+                      "
+                    >
+                      ⭐ TOP 50 ⭐
+                    </button>
+
+                  )}
+
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      deleteProduct(
+                        prod
+                      )
+                    }
+                    className="
+                      bg-red-100
+                      text-red-700
+                      rounded-lg
+                      py-2
+                      text-xs
+                      font-bold
+                    "
+                  >
+                    🗑 Видалити
+                  </button>
+
+                </div>
+
+              </div>
+
+            ))}
 
           </div>
 
@@ -4569,7 +4948,8 @@ function App() {
 
       {/* ADMIN */}
 
-      {tab === 'admin' &&
+      {tab ===
+        'admin' &&
         currentDbUser
           ?.is_admin && (
 
@@ -4578,22 +4958,33 @@ function App() {
           <div
             className="
               bg-[#00383e]
-              border
-              border-[#104b50]
               rounded-2xl
               p-4
+              border
+              border-[#104b50]
               mb-4
             "
           >
 
             <h2
               className="
-                text-lg
                 font-black
+                text-lg
               "
             >
               🛡 Адмін-панель
             </h2>
+
+
+            <p
+              className="
+                text-[10px]
+                text-gray-400
+                mt-1
+              "
+            >
+              Адмінські зміни проходять через захищену Edge Function
+            </p>
 
 
             <div
@@ -4686,8 +5077,7 @@ function App() {
             <div
               className="
                 text-center
-                p-6
-                text-[#23e5bf]
+                py-8
               "
             >
               Завантаження...
@@ -4698,7 +5088,7 @@ function App() {
 
           {!adminLoading &&
             adminSection ===
-              'moderation' && (
+            'moderation' && (
 
             <div className="space-y-3">
 
@@ -4713,7 +5103,7 @@ function App() {
                     text-center
                   "
                 >
-                  Немає оголошень на модерації
+                  Черга порожня
                 </div>
 
               ) : moderationProducts.map(
@@ -4732,32 +5122,35 @@ function App() {
                 >
 
                   <b>
-                    {prod.title}
+                    {
+                      prod.title
+                    }
                   </b>
 
-                  <div
+                  <p
                     className="
                       font-black
                     "
                   >
-                    {prod.price_uah} ₴
-                  </div>
+                    {
+                      prod.price_uah
+                    } ₴
+                  </p>
 
-                  <div
+                  <p
                     className="
                       text-xs
                       text-gray-500
-                      mt-1
                     "
                   >
-                    👤 {
-                      prod.users
-                        ?.first_name ||
-                      prod.users
-                        ?.username ||
-                      'User'
+                    📍 {
+                      prod.city ||
+                      '—'
+                    }, {
+                      prod.region ||
+                      '—'
                     }
-                  </div>
+                  </p>
 
 
                   {prod.image_url && (
@@ -4782,7 +5175,7 @@ function App() {
                   <p
                     className="
                       text-xs
-                      my-2
+                      mb-3
                     "
                   >
                     {
@@ -4802,6 +5195,9 @@ function App() {
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
                         approveProduct(
                           prod
@@ -4809,11 +5205,11 @@ function App() {
                       }
                       className="
                         bg-green-100
-                        text-green-800
+                        text-green-700
                         rounded-lg
                         py-2
-                        font-black
                         text-xs
+                        font-black
                       "
                     >
                       ✅ Схвалити
@@ -4822,6 +5218,9 @@ function App() {
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
                         rejectProduct(
                           prod
@@ -4832,8 +5231,8 @@ function App() {
                         text-red-700
                         rounded-lg
                         py-2
-                        font-black
                         text-xs
+                        font-black
                       "
                     >
                       ❌ Відхилити
@@ -4852,7 +5251,7 @@ function App() {
 
           {!adminLoading &&
             adminSection ===
-              'reports' && (
+            'reports' && (
 
             <div className="space-y-3">
 
@@ -4867,7 +5266,7 @@ function App() {
                     text-center
                   "
                 >
-                  Відкритих скарг немає
+                  Скарг немає
                 </div>
 
               ) : adminReports.map(
@@ -4886,7 +5285,9 @@ function App() {
                 >
 
                   <b>
-                    ⚠️ Скарга #{report.id}
+                    ⚠️ Скарга #{
+                      report.id
+                    }
                   </b>
 
                   <p
@@ -4900,11 +5301,7 @@ function App() {
                     }
                   </p>
 
-                  <p
-                    className="
-                      text-xs
-                    "
-                  >
+                  <p className="text-xs">
                     Причина: {
                       report.reason
                     }
@@ -4919,7 +5316,7 @@ function App() {
                         rounded-lg
                         p-2
                         text-xs
-                        my-2
+                        mt-2
                       "
                     >
                       {
@@ -4935,11 +5332,15 @@ function App() {
                       grid
                       grid-cols-2
                       gap-2
+                      mt-3
                     "
                   >
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
                         resolveReport(
                           report
@@ -4960,8 +5361,11 @@ function App() {
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
-                        rejectReportedProduct(
+                        hideReportedProduct(
                           report
                         )
                       }
@@ -4974,7 +5378,7 @@ function App() {
                         font-bold
                       "
                     >
-                      🚫 Приховати товар
+                      🚫 Приховати
                     </button>
 
                   </div>
@@ -4990,7 +5394,7 @@ function App() {
 
           {!adminLoading &&
             adminSection ===
-              'verification' && (
+            'verification' && (
 
             <div className="space-y-3">
 
@@ -5005,7 +5409,7 @@ function App() {
                     text-center
                   "
                 >
-                  Нових заявок немає
+                  Заявок немає
                 </div>
 
               ) : verificationUsers.map(
@@ -5039,7 +5443,9 @@ function App() {
                         text-gray-500
                       "
                     >
-                      @{user.username}
+                      @{
+                        user.username
+                      }
                     </p>
 
                   )}
@@ -5068,6 +5474,9 @@ function App() {
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
                         approveVerification(
                           user
@@ -5082,12 +5491,15 @@ function App() {
                         font-black
                       "
                     >
-                      ✅ Верифікувати
+                      ✅ Підтвердити
                     </button>
 
 
                     <button
                       type="button"
+                      disabled={
+                        secureLoading
+                      }
                       onClick={() =>
                         rejectVerification(
                           user
@@ -5120,7 +5532,7 @@ function App() {
       )}
 
 
-      {/* PRODUCT MODAL */}
+      {/* PRODUCT DETAILS */}
 
       {selectedProduct && (
 
@@ -5128,8 +5540,8 @@ function App() {
           className="
             fixed
             inset-0
-            bg-black/80
             z-50
+            bg-black/80
             flex
             items-end
             justify-center
@@ -5138,6 +5550,7 @@ function App() {
 
           <div
             className="
+              relative
               bg-white
               text-[#002f34]
               w-full
@@ -5146,7 +5559,6 @@ function App() {
               overflow-y-auto
               rounded-t-3xl
               p-5
-              relative
             "
           >
 
@@ -5159,8 +5571,8 @@ function App() {
               }
               className="
                 absolute
-                top-4
                 right-4
+                top-4
                 z-20
                 bg-gray-200
                 w-9
@@ -5179,13 +5591,13 @@ function App() {
 
               <div
                 className="
+                  h-80
+                  bg-gray-900
+                  rounded-2xl
                   flex
                   overflow-x-auto
                   no-scrollbar
                   snap-x
-                  h-80
-                  bg-gray-900
-                  rounded-2xl
                   mb-4
                 "
               >
@@ -5271,9 +5683,9 @@ function App() {
                 className="
                   inline-block
                   bg-amber-300
+                  rounded
                   px-2
                   py-1
-                  rounded
                   text-xs
                   font-black
                   mb-2
@@ -5305,18 +5717,55 @@ function App() {
               "
             >
               {
-                selectedProduct
-                  .price_uah
+                selectedProduct.price_uah
               } ₴
             </div>
 
 
-            <div
+            {(selectedProduct.city ||
+              selectedProduct.region) && (
+
+              <div
+                className="
+                  bg-gray-100
+                  rounded-xl
+                  p-3
+                  text-sm
+                  mb-3
+                "
+              >
+                📍 {
+                  selectedProduct.city
+                }
+                {
+                  selectedProduct.city &&
+                  selectedProduct.region
+                    ? ', '
+                    : ''
+                }
+                {
+                  selectedProduct.region
+                }
+              </div>
+
+            )}
+
+
+            <button
+              type="button"
+              onClick={() =>
+                openSellerPage(
+                  selectedProduct.users
+                )
+              }
               className="
-                bg-gray-100
+                w-full
+                bg-blue-50
+                border
+                border-blue-100
                 rounded-xl
                 p-3
-                mt-3
+                text-left
               "
             >
 
@@ -5324,61 +5773,88 @@ function App() {
                 className="
                   flex
                   items-center
-                  gap-2
+                  gap-3
                 "
               >
-
-                <b>
-                  👤 {
-                    selectedProduct
-                      .users
-                      ?.first_name ||
-                    selectedProduct
-                      .users
-                      ?.username ||
-                    'Продавець'
-                  }
-                </b>
-
 
                 {selectedProduct
                   .users
-                  ?.is_verified && (
+                  ?.photo_url ? (
 
-                  <span
+                  <img
+                    src={
+                      selectedProduct
+                        .users
+                        .photo_url
+                    }
                     className="
-                      bg-blue-100
-                      text-blue-700
-                      text-[10px]
-                      px-2
-                      py-1
-                      rounded
-                      font-black
+                      w-12
+                      h-12
+                      rounded-full
+                      object-cover
+                    "
+                  />
+
+                ) : (
+
+                  <div
+                    className="
+                      w-12
+                      h-12
+                      bg-gray-200
+                      rounded-full
+                      flex
+                      items-center
+                      justify-center
                     "
                   >
-                    ✓ VERIFIED
-                  </span>
+                    👤
+                  </div>
 
                 )}
 
+
+                <div
+                  className="
+                    flex-1
+                  "
+                >
+
+                  <b>
+                    {
+                      selectedProduct
+                        .users
+                        ?.first_name ||
+                      selectedProduct
+                        .users
+                        ?.username ||
+                      'Продавець'
+                    }
+
+                    {
+                      selectedProduct
+                        .users
+                        ?.is_verified
+                        ? ' ✓'
+                        : ''
+                    }
+                  </b>
+
+
+                  <p
+                    className="
+                      text-xs
+                      text-blue-600
+                    "
+                  >
+                    Переглянути профіль →
+                  </p>
+
+                </div>
+
               </div>
 
-
-              <div
-                className="
-                  text-xs
-                  text-amber-500
-                  font-bold
-                  mt-1
-                "
-              >
-                ⭐ {
-                  avgRating ||
-                  'Немає рейтингу'
-                }
-              </div>
-
-            </div>
+            </button>
 
 
             {selectedProduct
@@ -5409,8 +5885,7 @@ function App() {
                   "
                 >
                   {
-                    selectedProduct
-                      .description
+                    selectedProduct.description
                   }
                 </p>
 
@@ -5424,107 +5899,98 @@ function App() {
                 .users?.id !==
               currentDbUser?.id && (
 
-              <div
+              <form
+                onSubmit={
+                  handleAddReview
+                }
                 className="
-                  border-t
+                  bg-gray-100
+                  rounded-xl
+                  p-3
+                  space-y-2
                   mt-4
-                  pt-4
                 "
               >
 
-                <form
-                  onSubmit={
-                    handleAddReview
+                <b className="text-xs">
+                  ⭐ Залишити відгук
+                </b>
+
+
+                <select
+                  value={
+                    newRating
+                  }
+                  onChange={e =>
+                    setNewRating(
+                      e.target.value
+                    )
                   }
                   className="
-                    bg-gray-100
-                    rounded-xl
-                    p-3
-                    space-y-2
+                    w-full
+                    rounded-lg
+                    p-2
                   "
                 >
 
-                  <b className="text-xs">
-                    Залишити відгук
-                  </b>
+                  <option value="5">
+                    ⭐⭐⭐⭐⭐
+                  </option>
+
+                  <option value="4">
+                    ⭐⭐⭐⭐
+                  </option>
+
+                  <option value="3">
+                    ⭐⭐⭐
+                  </option>
+
+                  <option value="2">
+                    ⭐⭐
+                  </option>
+
+                  <option value="1">
+                    ⭐
+                  </option>
+
+                </select>
 
 
-                  <select
-                    value={
-                      newRating
-                    }
-                    onChange={e =>
-                      setNewRating(
-                        e.target.value
-                      )
-                    }
-                    className="
-                      w-full
-                      p-2
-                      rounded-lg
-                    "
-                  >
-
-                    <option value="5">
-                      ⭐⭐⭐⭐⭐
-                    </option>
-
-                    <option value="4">
-                      ⭐⭐⭐⭐
-                    </option>
-
-                    <option value="3">
-                      ⭐⭐⭐
-                    </option>
-
-                    <option value="2">
-                      ⭐⭐
-                    </option>
-
-                    <option value="1">
-                      ⭐
-                    </option>
-
-                  </select>
+                <input
+                  type="text"
+                  value={
+                    newReviewComment
+                  }
+                  onChange={e =>
+                    setNewReviewComment(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Коментар..."
+                  className="
+                    w-full
+                    rounded-lg
+                    p-2
+                  "
+                />
 
 
-                  <input
-                    type="text"
-                    value={
-                      newReviewComment
-                    }
-                    onChange={e =>
-                      setNewReviewComment(
-                        e.target.value
-                      )
-                    }
-                    placeholder="Ваш відгук..."
-                    className="
-                      w-full
-                      p-2
-                      rounded-lg
-                    "
-                  />
+                <button
+                  type="submit"
+                  className="
+                    w-full
+                    bg-[#002f34]
+                    text-white
+                    rounded-lg
+                    py-2
+                    text-xs
+                    font-bold
+                  "
+                >
+                  Надіслати
+                </button>
 
-
-                  <button
-                    type="submit"
-                    className="
-                      w-full
-                      bg-[#002f34]
-                      text-white
-                      rounded-lg
-                      py-2
-                      text-xs
-                      font-bold
-                    "
-                  >
-                    Надіслати
-                  </button>
-
-                </form>
-
-              </div>
+              </form>
 
             )}
 
@@ -5533,7 +5999,7 @@ function App() {
               className="
                 flex
                 gap-2
-                mt-5
+                mt-4
               "
             >
 
@@ -5593,14 +6059,441 @@ function App() {
                   mt-3
                   bg-red-50
                   text-red-600
-                  py-2
                   rounded-xl
+                  py-2
                   text-xs
                   font-bold
                 "
               >
                 ⚠️ Поскаржитися
               </button>
+
+            )}
+
+          </div>
+
+        </div>
+
+      )}
+
+
+      {/* SELLER PAGE */}
+
+      {selectedSeller && (
+
+        <div
+          className="
+            fixed
+            inset-0
+            z-[55]
+            bg-[#002f34]
+            overflow-y-auto
+          "
+        >
+
+          <div
+            className="
+              max-w-md
+              mx-auto
+              p-4
+              pb-24
+            "
+          >
+
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedSeller(
+                  null
+                )
+              }
+              className="
+                bg-[#104b50]
+                rounded-xl
+                px-4
+                py-2
+                text-xs
+                font-bold
+                mb-4
+              "
+            >
+              ← Назад
+            </button>
+
+
+            <div
+              className="
+                bg-[#00383e]
+                border
+                border-[#104b50]
+                rounded-2xl
+                p-5
+              "
+            >
+
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-3
+                "
+              >
+
+                {selectedSeller
+                  .photo_url ? (
+
+                  <img
+                    src={
+                      selectedSeller
+                        .photo_url
+                    }
+                    className="
+                      w-20
+                      h-20
+                      rounded-full
+                      object-cover
+                    "
+                  />
+
+                ) : (
+
+                  <div
+                    className="
+                      w-20
+                      h-20
+                      bg-[#104b50]
+                      rounded-full
+                      flex
+                      items-center
+                      justify-center
+                      text-3xl
+                    "
+                  >
+                    👤
+                  </div>
+
+                )}
+
+
+                <div>
+
+                  <h2
+                    className="
+                      text-xl
+                      font-black
+                    "
+                  >
+                    {
+                      selectedSeller.first_name ||
+                      selectedSeller.username ||
+                      'Продавець'
+                    }
+
+                    {
+                      selectedSeller.is_verified
+                        ? ' ✓'
+                        : ''
+                    }
+                  </h2>
+
+
+                  {selectedSeller
+                    .username && (
+
+                    <p
+                      className="
+                        text-xs
+                        text-gray-300
+                      "
+                    >
+                      @{
+                        selectedSeller.username
+                      }
+                    </p>
+
+                  )}
+
+
+                  {selectedSeller
+                    .is_verified && (
+
+                    <span
+                      className="
+                        inline-block
+                        bg-blue-100
+                        text-blue-700
+                        rounded
+                        px-2
+                        py-1
+                        text-[10px]
+                        font-black
+                        mt-2
+                      "
+                    >
+                      ✓ VERIFIED
+                    </span>
+
+                  )}
+
+                </div>
+
+              </div>
+
+
+              <div
+                className="
+                  grid
+                  grid-cols-2
+                  gap-2
+                  mt-4
+                "
+              >
+
+                <div
+                  className="
+                    bg-[#00474e]
+                    rounded-xl
+                    p-3
+                    text-center
+                  "
+                >
+                  <b
+                    className="
+                      block
+                      text-lg
+                    "
+                  >
+                    {
+                      sellerProducts.length
+                    }
+                  </b>
+
+                  <span className="text-[10px]">
+                    Оголошень
+                  </span>
+                </div>
+
+
+                <div
+                  className="
+                    bg-[#00474e]
+                    rounded-xl
+                    p-3
+                    text-center
+                  "
+                >
+                  <b
+                    className="
+                      block
+                      text-lg
+                    "
+                  >
+                    ⭐ {
+                      sellerAverageRating ||
+                      '—'
+                    }
+                  </b>
+
+                  <span className="text-[10px]">
+                    {
+                      sellerReviews.length
+                    } відгуків
+                  </span>
+                </div>
+
+              </div>
+
+
+              {selectedSeller
+                .username && (
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    openSellerChat(
+                      selectedSeller.username
+                    )
+                  }
+                  className="
+                    w-full
+                    bg-[#23e5bf]
+                    text-[#002f34]
+                    rounded-xl
+                    py-3
+                    font-black
+                    mt-4
+                  "
+                >
+                  💬 Написати продавцю
+                </button>
+
+              )}
+
+            </div>
+
+
+            <h3
+              className="
+                font-black
+                mt-6
+                mb-3
+              "
+            >
+              📦 Оголошення продавця
+            </h3>
+
+
+            {sellerLoading ? (
+
+              <div
+                className="
+                  text-center
+                  py-8
+                "
+              >
+                Завантаження...
+              </div>
+
+            ) : sellerProducts.length ===
+            0 ? (
+
+              <div
+                className="
+                  bg-[#00383e]
+                  rounded-xl
+                  p-6
+                  text-center
+                "
+              >
+                Активних оголошень немає
+              </div>
+
+            ) : (
+
+              <div
+                className="
+                  grid
+                  grid-cols-2
+                  gap-3
+                "
+              >
+
+                {sellerProducts.map(
+                  prod => (
+
+                    <ProductCard
+                      key={
+                        prod.id
+                      }
+                      prod={
+                        prod
+                      }
+                    />
+
+                  )
+                )}
+
+              </div>
+
+            )}
+
+
+            <h3
+              className="
+                font-black
+                mt-6
+                mb-3
+              "
+            >
+              ⭐ Відгуки
+            </h3>
+
+
+            {sellerReviews.length ===
+            0 ? (
+
+              <div
+                className="
+                  bg-[#00383e]
+                  rounded-xl
+                  p-5
+                  text-center
+                "
+              >
+                Відгуків ще немає
+              </div>
+
+            ) : (
+
+              <div className="space-y-2">
+
+                {sellerReviews.map(
+                  review => (
+
+                  <div
+                    key={
+                      review.id
+                    }
+                    className="
+                      bg-white
+                      text-[#002f34]
+                      rounded-xl
+                      p-3
+                    "
+                  >
+
+                    <div
+                      className="
+                        text-amber-500
+                        font-black
+                      "
+                    >
+                      {
+                        '⭐'.repeat(
+                          Number(
+                            review.rating ||
+                            0
+                          )
+                        )
+                      }
+                    </div>
+
+
+                    {review.comment && (
+
+                      <p
+                        className="
+                          text-sm
+                          mt-1
+                        "
+                      >
+                        {
+                          review.comment
+                        }
+                      </p>
+
+                    )}
+
+
+                    <p
+                      className="
+                        text-[10px]
+                        text-gray-400
+                        mt-2
+                      "
+                    >
+                      {
+                        formatDate(
+                          review.created_at
+                        )
+                      }
+                    </p>
+
+                  </div>
+
+                ))}
+
+              </div>
 
             )}
 
@@ -5619,7 +6512,7 @@ function App() {
           className="
             fixed
             inset-0
-            z-[60]
+            z-[70]
             bg-black/80
             flex
             items-center
@@ -5641,11 +6534,11 @@ function App() {
 
             <h3
               className="
-                font-black
                 text-lg
+                font-black
               "
             >
-              ⚠️ Скарга
+              ⚠️ Поскаржитися
             </h3>
 
 
@@ -5660,9 +6553,9 @@ function App() {
               }
               className="
                 w-full
-                p-3
                 rounded-xl
                 border
+                p-3
                 mt-4
               "
             >
@@ -5695,6 +6588,7 @@ function App() {
 
 
             <textarea
+              rows="4"
               value={
                 reportDetails
               }
@@ -5703,13 +6597,12 @@ function App() {
                   e.target.value
                 )
               }
-              rows="4"
-              placeholder="Опишіть проблему..."
+              placeholder="Опишіть проблему"
               className="
                 w-full
-                p-3
                 rounded-xl
                 border
+                p-3
                 mt-3
               "
             />
@@ -5759,11 +6652,7 @@ function App() {
                   disabled:opacity-40
                 "
               >
-                {
-                  sendingReport
-                    ? '...'
-                    : 'Надіслати'
-                }
+                Надіслати
               </button>
 
             </div>
@@ -5803,7 +6692,7 @@ function App() {
             )
           }
           className={
-            `flex flex-col items-center text-xs font-bold ` +
+            `flex flex-col items-center text-[10px] font-bold ` +
             (
               tab === 'catalog'
                 ? 'text-[#23e5bf]'
@@ -5826,7 +6715,7 @@ function App() {
             )
           }
           className={
-            `flex flex-col items-center text-xs font-bold ` +
+            `flex flex-col items-center text-[10px] font-bold ` +
             (
               tab === 'favorites'
                 ? 'text-[#23e5bf]'
@@ -5844,11 +6733,16 @@ function App() {
         <button
           type="button"
           onClick={() => {
+
             resetForm();
-            setTab('add');
+
+            setTab(
+              'add'
+            );
+
           }}
           className={
-            `flex flex-col items-center text-xs font-bold ` +
+            `flex flex-col items-center text-[10px] font-bold ` +
             (
               tab === 'add'
                 ? 'text-[#23e5bf]'
@@ -5871,7 +6765,7 @@ function App() {
             )
           }
           className={
-            `flex flex-col items-center text-xs font-bold ` +
+            `flex flex-col items-center text-[10px] font-bold ` +
             (
               tab === 'profile'
                 ? 'text-[#23e5bf]'
@@ -5919,6 +6813,10 @@ function App() {
   );
 }
 
+
+/* =========================================================
+   START REACT
+========================================================= */
 
 ReactDOM
   .createRoot(
