@@ -86,19 +86,17 @@
 <script type="text/babel">
 
 /* =========================================================
-   SUPABASE
+   CONFIG
 ========================================================= */
 
 const SUPABASE_URL =
   'https://dhjrvpnbeapybgomwelc.supabase.co';
 
-
-/*
-  ВСТАВ СЮДИ СВІЙ ТЕПЕРІШНІЙ РОБОЧИЙ
-  PUBLISHABLE / ANON KEY.
-*/
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoanJ2cG5iZWFweWJnb213ZWxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDk1NzMsImV4cCI6MjEwMzc4NTU3M30.-syhXj3B7AN-una0dIqCWZOk-wHaHfelBK_VdqduibY';
+
+const BOT_USERNAME =
+  'ukraineolx_bot';
 
 
 const supabaseClient =
@@ -113,7 +111,7 @@ const tg =
 
 
 /* =========================================================
-   ОБЛАСТІ
+   REGIONS
 ========================================================= */
 
 const REGIONS = [
@@ -182,9 +180,7 @@ function formatDate(date) {
   try {
 
     return new Date(date)
-      .toLocaleDateString(
-        'uk-UA'
-      );
+      .toLocaleDateString('uk-UA');
 
   } catch {
 
@@ -225,6 +221,14 @@ function App() {
     React.useState(null);
 
 
+  /*
+    Щоб start_param не відкривав
+    товар повторно після кожного refresh.
+  */
+  const startProductOpenedRef =
+    React.useRef(false);
+
+
   /* =========================
      SELLER PAGE
   ========================= */
@@ -243,7 +247,7 @@ function App() {
 
 
   /* =========================
-     SEARCH / FILTER
+     SEARCH / FILTERS
   ========================= */
 
   const [searchQuery, setSearchQuery] =
@@ -343,7 +347,7 @@ function App() {
 
 
   /* =========================
-     REPORT
+     REPORTS
   ========================= */
 
   const [showReportModal, setShowReportModal] =
@@ -386,8 +390,19 @@ function App() {
      TELEGRAM USER
   ========================= */
 
+  const telegramUser =
+    tg?.initDataUnsafe?.user || null;
+
+
+  /*
+    Не використовуємо чужі user-дані
+    з URL вручну.
+
+    У Telegram цей user приходить
+    з поточної Mini App сесії.
+  */
   const currentUser =
-    tg?.initDataUnsafe?.user || {
+    telegramUser || {
       id: 9999999,
       username: 'demo_user',
       first_name: 'Користувач'
@@ -427,7 +442,7 @@ function App() {
       if (!dbUser?.id) {
 
         throw new Error(
-          'Не вдалося створити профіль.'
+          'Не вдалося завантажити профіль.'
         );
       }
 
@@ -435,18 +450,15 @@ function App() {
         dbUser
       );
 
+
       await Promise.all([
         fetchProducts(),
-        fetchFavorites(
-          dbUser.id
-        )
+        fetchFavorites(dbUser.id)
       ]);
 
     } catch (error) {
 
-      console.error(
-        error
-      );
+      console.error(error);
 
       setAppError(
         errorText(error)
@@ -461,7 +473,105 @@ function App() {
 
 
   /* =========================================================
-     SECURE EDGE FUNCTION
+     START PARAM
+  ========================================================= */
+
+  function tryOpenStartProduct(
+    loadedProducts
+  ) {
+
+    if (
+      startProductOpenedRef.current
+    ) {
+      return;
+    }
+
+
+    const startParam =
+      tg?.initDataUnsafe
+        ?.start_param;
+
+
+    if (
+      !startParam ||
+      !startParam.startsWith(
+        'product_'
+      )
+    ) {
+      return;
+    }
+
+
+    const idText =
+      startParam.replace(
+        'product_',
+        ''
+      );
+
+
+    const productId =
+      Number(idText);
+
+
+    if (
+      !Number.isFinite(productId)
+    ) {
+      return;
+    }
+
+
+    const product =
+      loadedProducts.find(
+        item =>
+          Number(item.id) ===
+          productId
+      );
+
+
+    if (!product) {
+
+      return;
+    }
+
+
+    /*
+      Не відкриваємо приховане,
+      продане або прострочене
+      оголошення.
+    */
+
+    if (
+      product.is_sold ||
+      product.moderation_status !==
+        'approved' ||
+      isExpired(product)
+    ) {
+
+      return;
+    }
+
+
+    startProductOpenedRef.current =
+      true;
+
+
+    setTab(
+      'catalog'
+    );
+
+
+    setTimeout(() => {
+
+      openProductDetails(
+        product
+      );
+
+    }, 250);
+  }
+
+
+  /* =========================================================
+     SECURE FUNCTION
   ========================================================= */
 
   async function secureAction(
@@ -469,16 +579,10 @@ function App() {
     extra = {}
   ) {
 
-    /*
-      Важливо:
-      передаємо саме tg.initData,
-      а НЕ initDataUnsafe.
-    */
-
     if (!tg?.initData) {
 
       throw new Error(
-        'Telegram initData відсутній. Відкрий Mini App через Telegram-бота.'
+        'Telegram initData відсутній. Відкрий Mini App через Telegram.'
       );
     }
 
@@ -493,6 +597,7 @@ function App() {
           'marketplace-secure',
           {
             body: {
+
               initData:
                 tg.initData,
 
@@ -508,7 +613,7 @@ function App() {
 
       throw new Error(
         error.message ||
-        'Помилка захищеної функції'
+        'Помилка Edge Function'
       );
     }
 
@@ -557,6 +662,7 @@ function App() {
     if (existing) {
 
       const updates = {};
+
 
       if (
         currentUser.username &&
@@ -643,6 +749,7 @@ function App() {
         .from('users')
         .insert([
           {
+
             telegram_id:
               currentUser.id,
 
@@ -696,7 +803,10 @@ function App() {
         .maybeSingle();
 
 
-    if (!error && data) {
+    if (
+      !error &&
+      data
+    ) {
 
       setCurrentDbUser(
         data
@@ -787,22 +897,34 @@ function App() {
 
     if (error) {
 
-      console.error(
-        error
-      );
+      console.error(error);
 
-      alert(
+      throw new Error(
         'Помилка товарів:\n' +
         errorText(error)
       );
-
-      return;
     }
 
 
+    const list =
+      data || [];
+
+
     setProducts(
-      data || []
+      list
     );
+
+
+    /*
+      Після реального завантаження
+      товарів перевіряємо startapp.
+    */
+    tryOpenStartProduct(
+      list
+    );
+
+
+    return list;
   }
 
 
@@ -832,11 +954,10 @@ function App() {
     if (!error) {
 
       setFavoriteIds(
-        (data || [])
-          .map(
-            item =>
-              item.product_id
-          )
+        (data || []).map(
+          item =>
+            item.product_id
+        )
       );
     }
   }
@@ -973,7 +1094,8 @@ function App() {
         prev =>
           prev.map(
             item =>
-              item.id === prod.id
+              item.id ===
+              prod.id
                 ? {
                     ...item,
                     views_count:
@@ -1091,25 +1213,22 @@ function App() {
                 ascending: false
               }
             )
-
         ]);
 
 
-      const activeProducts =
+      const active =
         (
           productsResult.data ||
           []
         )
           .filter(
             prod =>
-              !isExpired(
-                prod
-              )
+              !isExpired(prod)
           );
 
 
       setSellerProducts(
-        activeProducts
+        active
       );
 
 
@@ -1232,9 +1351,7 @@ function App() {
   ) {
 
     const preview =
-      imagePreviews[
-        index
-      ];
+      imagePreviews[index];
 
 
     try {
@@ -1375,30 +1492,16 @@ function App() {
     );
 
 
-    setEditingProductId(
-      null
-    );
-
+    setEditingProductId(null);
     setTitle('');
-
     setPrice('');
-
-    setCondition(
-      'used'
-    );
-
+    setCondition('used');
     setDescription('');
-
     setCategoryId('');
-
     setRegion('');
-
     setCity('');
-
     setImageFiles([]);
-
     setImagePreviews([]);
-
     setExistingImageUrls([]);
   }
 
@@ -1471,7 +1574,6 @@ function App() {
     );
 
     setImageFiles([]);
-
     setImagePreviews([]);
 
     setExistingImageUrls(
@@ -1592,10 +1694,7 @@ function App() {
           ...uploaded
         ]
           .filter(Boolean)
-          .slice(
-            0,
-            5
-          );
+          .slice(0, 5);
 
 
       const payload = {
@@ -1612,9 +1711,7 @@ function App() {
           description.trim(),
 
         category_id:
-          Number(
-            categoryId
-          ),
+          Number(categoryId),
 
         region,
 
@@ -1667,9 +1764,7 @@ function App() {
           error: deleteError
         } =
           await supabaseClient
-            .from(
-              'product_images'
-            )
+            .from('product_images')
             .delete()
             .eq(
               'product_id',
@@ -1678,7 +1773,6 @@ function App() {
 
 
         if (deleteError) {
-
           throw deleteError;
         }
 
@@ -1691,12 +1785,11 @@ function App() {
             error: galleryError
           } =
             await supabaseClient
-              .from(
-                'product_images'
-              )
+              .from('product_images')
               .insert(
                 finalImages.map(
                   imageUrl => ({
+
                     product_id:
                       editingProductId,
 
@@ -1708,7 +1801,6 @@ function App() {
 
 
           if (galleryError) {
-
             throw galleryError;
           }
         }
@@ -1769,12 +1861,11 @@ function App() {
             error: galleryError
           } =
             await supabaseClient
-              .from(
-                'product_images'
-              )
+              .from('product_images')
               .insert(
                 finalImages.map(
                   imageUrl => ({
+
                     product_id:
                       newProduct.id,
 
@@ -1786,7 +1877,6 @@ function App() {
 
 
           if (galleryError) {
-
             throw galleryError;
           }
         }
@@ -1872,7 +1962,6 @@ function App() {
         'Видалити оголошення?'
       )
     ) {
-
       return;
     }
 
@@ -1929,6 +2018,7 @@ function App() {
       await supabaseClient
         .from('products')
         .update({
+
           expires_at:
             expiresAt,
 
@@ -1986,14 +2076,12 @@ function App() {
         ?.users?.id ||
       !currentDbUser?.id
     ) {
-
       return;
     }
 
 
     if (
-      selectedProduct
-        .users.id ===
+      selectedProduct.users.id ===
       currentDbUser.id
     ) {
 
@@ -2012,21 +2100,18 @@ function App() {
         .from('reviews')
         .insert([
           {
+
             seller_id:
-              selectedProduct
-                .users.id,
+              selectedProduct.users.id,
 
             reviewer_id:
               currentDbUser.id,
 
             rating:
-              Number(
-                newRating
-              ),
+              Number(newRating),
 
             comment:
-              newReviewComment
-                .trim()
+              newReviewComment.trim()
           }
         ]);
 
@@ -2041,10 +2126,7 @@ function App() {
     }
 
 
-    setNewReviewComment(
-      ''
-    );
-
+    setNewReviewComment('');
 
     alert(
       '⭐ Відгук додано.'
@@ -2144,9 +2226,7 @@ function App() {
       'fraud'
     );
 
-    setReportDetails(
-      ''
-    );
+    setReportDetails('');
 
     setShowReportModal(
       true
@@ -2160,7 +2240,6 @@ function App() {
       !selectedProduct?.id ||
       !currentDbUser?.id
     ) {
-
       return;
     }
 
@@ -2179,6 +2258,7 @@ function App() {
           .from('reports')
           .insert([
             {
+
               reporter_user_id:
                 currentDbUser.id,
 
@@ -2189,8 +2269,7 @@ function App() {
                 reportReason,
 
               details:
-                reportDetails
-                  .trim() ||
+                reportDetails.trim() ||
                 null,
 
               status:
@@ -2200,7 +2279,6 @@ function App() {
 
 
       if (error) {
-
         throw error;
       }
 
@@ -2315,6 +2393,7 @@ function App() {
             'create-telegram-invoice',
             {
               body: {
+
                 productId:
                   prod.id,
 
@@ -2385,7 +2464,6 @@ function App() {
       !currentDbUser
         ?.is_admin
     ) {
-
       return;
     }
 
@@ -2454,7 +2532,6 @@ function App() {
                 ascending: true
               }
             )
-
         ]);
 
 
@@ -2491,8 +2568,7 @@ function App() {
   React.useEffect(() => {
 
     if (
-      tab ===
-      'admin' &&
+      tab === 'admin' &&
       currentDbUser
         ?.is_admin
     ) {
@@ -2507,7 +2583,7 @@ function App() {
 
 
   /* =========================================================
-     SECURE ADMIN ACTIONS
+     SECURE ADMIN
   ========================================================= */
 
   async function approveProduct(
@@ -2564,7 +2640,6 @@ function App() {
     if (
       reason === null
     ) {
-
       return;
     }
 
@@ -2736,7 +2811,6 @@ function App() {
     if (
       reason === null
     ) {
-
       return;
     }
 
@@ -2780,7 +2854,7 @@ function App() {
 
 
   /* =========================================================
-     TELEGRAM
+     TELEGRAM CHAT
   ========================================================= */
 
   function openSellerChat(
@@ -2811,20 +2885,56 @@ function App() {
   }
 
 
+  /* =========================================================
+     SAFE SHARE
+  ========================================================= */
+
   function shareProduct(
     prod
   ) {
 
-    tg?.openTelegramLink(
+    /*
+      ВАЖЛИВО:
+
+      НЕ використовуємо:
+      window.location.href
+
+      Бо там Telegram може містити
+      tgWebAppData поточного користувача.
+
+      Ділимось тільки чистим deep link
+      до бота.
+    */
+
+    const productLink =
+      `https://t.me/${BOT_USERNAME}` +
+      `?startapp=product_${prod.id}`;
+
+
+    const text =
+      `📦 ${prod.title}\n` +
+      `💰 ${prod.price_uah} ₴` +
+      (
+        prod.city
+          ? `\n📍 ${prod.city}`
+          : ''
+      );
+
+
+    const shareUrl =
       'https://t.me/share/url?' +
       'url=' +
       encodeURIComponent(
-        window.location.href
+        productLink
       ) +
       '&text=' +
       encodeURIComponent(
-        `${prod.title} — ${prod.price_uah} ₴`
-      )
+        text
+      );
+
+
+    tg?.openTelegramLink(
+      shareUrl
     );
   }
 
@@ -2838,7 +2948,6 @@ function App() {
   ) {
 
     if (!prod.expires_at) {
-
       return false;
     }
 
@@ -2857,7 +2966,6 @@ function App() {
   ) {
 
     if (!prod.expires_at) {
-
       return null;
     }
 
@@ -2911,7 +3019,7 @@ function App() {
 
 
   /* =========================================================
-     FILTERED PRODUCTS
+     CATALOG FILTERS
   ========================================================= */
 
   const catalogProducts =
@@ -2921,7 +3029,6 @@ function App() {
         if (
           prod.is_sold
         ) {
-
           return false;
         }
 
@@ -2929,7 +3036,6 @@ function App() {
         if (
           isExpired(prod)
         ) {
-
           return false;
         }
 
@@ -2938,7 +3044,6 @@ function App() {
           prod.moderation_status !==
           'approved'
         ) {
-
           return false;
         }
 
@@ -2952,7 +3057,6 @@ function App() {
             selectedCategory
           )
         ) {
-
           return false;
         }
 
@@ -2969,7 +3073,6 @@ function App() {
                 .toLowerCase()
             )
         ) {
-
           return false;
         }
 
@@ -2979,7 +3082,6 @@ function App() {
           prod.region !==
           filterRegion
         ) {
-
           return false;
         }
 
@@ -2996,7 +3098,6 @@ function App() {
                 .toLowerCase()
             )
         ) {
-
           return false;
         }
 
@@ -3010,7 +3111,6 @@ function App() {
             minPrice
           )
         ) {
-
           return false;
         }
 
@@ -3024,7 +3124,6 @@ function App() {
             maxPrice
           )
         ) {
-
           return false;
         }
 
@@ -3035,7 +3134,6 @@ function App() {
           prod.condition !==
           conditionFilter
         ) {
-
           return false;
         }
 
@@ -3331,12 +3429,14 @@ function App() {
             📍 {
               prod.city
             }
+
             {
               prod.city &&
               prod.region
                 ? ', '
                 : ''
             }
+
             {
               prod.region
             }
@@ -3381,7 +3481,7 @@ function App() {
 
 
   /* =========================================================
-     RENDER
+     UI
   ========================================================= */
 
   return (
@@ -3472,8 +3572,6 @@ function App() {
       </header>
 
 
-      {/* ERROR */}
-
       {appError && (
 
         <div
@@ -3501,7 +3599,6 @@ function App() {
             {appError}
           </p>
 
-
           <button
             type="button"
             onClick={
@@ -3528,8 +3625,7 @@ function App() {
 
       {/* CATALOG */}
 
-      {tab ===
-        'catalog' && (
+      {tab === 'catalog' && (
 
         <main className="p-4">
 
@@ -3558,7 +3654,6 @@ function App() {
                 p-3
               "
             />
-
 
             <button
               type="button"
@@ -3780,9 +3875,7 @@ function App() {
                   setFilterCity('');
                   setMinPrice('');
                   setMaxPrice('');
-                  setConditionFilter(
-                    'all'
-                  );
+                  setConditionFilter('all');
 
                 }}
                 className="
@@ -3885,8 +3978,7 @@ function App() {
               Завантаження...
             </div>
 
-          ) : catalogProducts.length ===
-          0 ? (
+          ) : catalogProducts.length === 0 ? (
 
             <div
               className="
@@ -3937,8 +4029,7 @@ function App() {
 
       {/* FAVORITES */}
 
-      {tab ===
-        'favorites' && (
+      {tab === 'favorites' && (
 
         <main className="p-4">
 
@@ -3954,8 +4045,7 @@ function App() {
           </h2>
 
 
-          {favoriteProducts.length ===
-          0 ? (
+          {favoriteProducts.length === 0 ? (
 
             <div
               className="
@@ -4004,8 +4094,7 @@ function App() {
 
       {/* ADD */}
 
-      {tab ===
-        'add' && (
+      {tab === 'add' && (
 
         <main className="p-4">
 
@@ -4458,8 +4547,7 @@ function App() {
 
       {/* PROFILE */}
 
-      {tab ===
-        'profile' && (
+      {tab === 'profile' && (
 
         <main className="p-4">
 
@@ -4948,8 +5036,7 @@ function App() {
 
       {/* ADMIN */}
 
-      {tab ===
-        'admin' &&
+      {tab === 'admin' &&
         currentDbUser
           ?.is_admin && (
 
@@ -5127,15 +5214,12 @@ function App() {
                     }
                   </b>
 
-                  <p
-                    className="
-                      font-black
-                    "
-                  >
+                  <p className="font-black">
                     {
                       prod.price_uah
                     } ₴
                   </p>
+
 
                   <p
                     className="
@@ -5290,6 +5374,7 @@ function App() {
                     }
                   </b>
 
+
                   <p
                     className="
                       text-xs
@@ -5300,6 +5385,7 @@ function App() {
                       report.product_id
                     }
                   </p>
+
 
                   <p className="text-xs">
                     Причина: {
@@ -5643,8 +5729,7 @@ function App() {
 
               </div>
 
-            ) : selectedProduct
-                .image_url ? (
+            ) : selectedProduct.image_url ? (
 
               <div
                 className="
@@ -5737,12 +5822,14 @@ function App() {
                 📍 {
                   selectedProduct.city
                 }
+
                 {
                   selectedProduct.city &&
                   selectedProduct.region
                     ? ', '
                     : ''
                 }
+
                 {
                   selectedProduct.region
                 }
@@ -5857,8 +5944,7 @@ function App() {
             </button>
 
 
-            {selectedProduct
-              .description && (
+            {selectedProduct.description && (
 
               <div
                 className="
@@ -6139,13 +6225,11 @@ function App() {
                 "
               >
 
-                {selectedSeller
-                  .photo_url ? (
+                {selectedSeller.photo_url ? (
 
                   <img
                     src={
-                      selectedSeller
-                        .photo_url
+                      selectedSeller.photo_url
                     }
                     className="
                       w-20
@@ -6197,8 +6281,7 @@ function App() {
                   </h2>
 
 
-                  {selectedSeller
-                    .username && (
+                  {selectedSeller.username && (
 
                     <p
                       className="
@@ -6214,8 +6297,7 @@ function App() {
                   )}
 
 
-                  {selectedSeller
-                    .is_verified && (
+                  {selectedSeller.is_verified && (
 
                     <span
                       className="
@@ -6257,6 +6339,7 @@ function App() {
                     text-center
                   "
                 >
+
                   <b
                     className="
                       block
@@ -6271,6 +6354,7 @@ function App() {
                   <span className="text-[10px]">
                     Оголошень
                   </span>
+
                 </div>
 
 
@@ -6282,6 +6366,7 @@ function App() {
                     text-center
                   "
                 >
+
                   <b
                     className="
                       block
@@ -6299,13 +6384,13 @@ function App() {
                       sellerReviews.length
                     } відгуків
                   </span>
+
                 </div>
 
               </div>
 
 
-              {selectedSeller
-                .username && (
+              {selectedSeller.username && (
 
                 <button
                   type="button"
@@ -6354,8 +6439,7 @@ function App() {
                 Завантаження...
               </div>
 
-            ) : sellerProducts.length ===
-            0 ? (
+            ) : sellerProducts.length === 0 ? (
 
               <div
                 className="
@@ -6409,8 +6493,7 @@ function App() {
             </h3>
 
 
-            {sellerReviews.length ===
-            0 ? (
+            {sellerReviews.length === 0 ? (
 
               <div
                 className="
