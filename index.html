@@ -469,6 +469,13 @@ function App() {
 
 
   const [
+    editingProductOwnerId,
+    setEditingProductOwnerId
+  ] =
+    React.useState(null);
+
+
+  const [
     title,
     setTitle
   ] =
@@ -2534,6 +2541,11 @@ function App() {
       null
     );
 
+
+    setEditingProductOwnerId(
+      null
+    );
+
     setTitle('');
 
     setPrice('');
@@ -2597,6 +2609,11 @@ function App() {
 
     setEditingProductId(
       prod.id
+    );
+
+
+    setEditingProductOwnerId(
+      prod.user_id ?? null
     );
 
 
@@ -2836,32 +2853,32 @@ function App() {
         const editingProduct =
           products.find(
             item =>
-              Number(
+              String(
                 item.id
               ) ===
-              Number(
+              String(
                 editingProductId
               )
           );
 
 
-        if (
-          !isMyProduct(
-            editingProduct
-          )
-        ) {
-
-          throw new Error(
-            'Це не ваше оголошення.'
-          );
-
-        }
-
-
         const editingOwnerId =
+          editingProductOwnerId ??
+          editingProduct?.user_id ??
           storedProductOwnerId(
             editingProduct
           );
+
+
+        if (
+          editingOwnerId == null
+        ) {
+
+          throw new Error(
+            'Не вдалося визначити власника оголошення. Онови сторінку і спробуй ще раз.'
+          );
+
+        }
 
 
         const {
@@ -3085,19 +3102,6 @@ function App() {
     prod
   ) {
 
-    if (
-      !isMyProduct(
-        prod
-      )
-    ) {
-
-      return alert(
-        'Це не ваше оголошення.'
-      );
-
-    }
-
-
     const ownerId =
       storedProductOwnerId(
         prod
@@ -3147,19 +3151,6 @@ function App() {
   async function deleteProduct(
     prod
   ) {
-
-    if (
-      !isMyProduct(
-        prod
-      )
-    ) {
-
-      return alert(
-        'Це не ваше оголошення.'
-      );
-
-    }
-
 
     const ownerId =
       storedProductOwnerId(
@@ -3216,19 +3207,6 @@ function App() {
   async function renewProduct(
     prod
   ) {
-
-    if (
-      !isMyProduct(
-        prod
-      )
-    ) {
-
-      return alert(
-        'Це не ваше оголошення.'
-      );
-
-    }
-
 
     const ownerId =
       storedProductOwnerId(
